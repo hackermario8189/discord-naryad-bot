@@ -1,0 +1,322 @@
+import os
+import discord
+import aiosqlite
+import random
+import asyncio
+from discord import app_commands
+from discord.ext import tasks
+from dotenv import load_dotenv
+from datetime import datetime, timedelta
+
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+OWNER_ID = 985188925360443452
+GUILD_ID = 1456265813190512763
+CHANNEL_ID = 1473183167895830568
+
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = discord.Client(intents=intents)
+tree = app_commands.CommandTree(bot)
+
+DB = "naryad.db"
+
+
+# ---------------- ЛИНИИ С МАКС КОЛИ ----------------
+
+BASE_LINE_LIMITS = {
+    64: 3,
+    26: 2,
+    31: 2,
+    68: 2,
+    98: 3,
+    3: 2,
+    150: 2,
+    72: 2,
+    1: 1,
+    5: 1,
+    67: 1,
+    28: 2
+}
+
+def get_line_limits_for_date(date):
+    limits = BASE_LINE_LIMITS.copy()
+    if date.weekday() >= 5:
+        limits[68] = 1
+        limits[28] = 1
+    return limits
+
+
+# ---------------- DATABASE ----------------
+
+async def init_db():
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("""
+        CREATE TABLE IF NOT EXISTS buses (
+            bus INTEGER PRIMARY KEY,
+            driver1 INTEGER NOT NULL,
+            driver2 INTEGER
+        )
+        """)
+        await db.execute("CREATE TABLE IF NOT EXISTS reserves (bus INTEGER PRIMARY KEY)")
+        await db.execute("CREATE TABLE IF NOT EXISTS broken (bus INTEGER PRIMARY KEY)")
+        await db.execute("CREATE TABLE IF NOT EXISTS sick (driver INTEGER PRIMARY KEY)")
+        await db.commit()
+
+
+# ---------------- РОТАЦИЯ ----------------
+
+def get_week_shift(driver1, driver2):
+    tomorrow = datetime.now() + timedelta(days=1)
+    week_number = tomorrow.isocalendar().week
+
+    if driver2 is None:
+        return driver1, None
+
+    return (driver2, driver1) if week_number % 2 == 0 else (driver1, driver2)
+
+
+# ---------------- READY ----------------
+
+@bot.event
+async def on_ready():
+    await init_db()
+    await tree.sync()
+    guild = discord.Object(id=GUILD_ID)
+    await tree.sync(guild=guild)
+    auto_naryad.start()
+    print(f"Bot ready as {bot.user}")
+
+
+# ---------------- ADD TITULAR ----------------
+
+@tree.command(name="addtitular", description="Добави титуляр", guild=discord.Object(id=GUILD_ID))
+async def addtitular(interaction: discord.Interaction, driver1: int, bus: int, driver2: int | None = None):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO buses (bus, driver1, driver2) VALUES (?, ?, ?)",
+            (bus, driver1, driver2)
+        )
+        await db.commit()
+
+    await interaction.response.send_message("Записано.")
+
+
+# ---------------- DRIVERS ----------------
+
+@tree.command(name="drivers", description="Покажи всички титуляри", guild=discord.Object(id=GUILD_ID))
+async def drivers(interaction: discord.Interaction):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        rows = await (await db.execute(
+            "SELECT bus, driver1, driver2 FROM buses ORDER BY bus ASC"
+        )).fetchall()
+
+    if not rows:
+        await interaction.response.send_message("Няма записани автобуси.")
+        return
+
+    text = "БУС   | ПЪРВА   | ВТОРА\n"
+    text += "-" * 35 + "\n"
+
+    for bus, d1, d2 in rows:
+        text += f"{bus:<6}| {d1:<8}| {d2 if d2 else '-'}\n"
+
+    await interaction.response.send_message(f"```{text}```")
+
+
+# ---------------- RESERVE ----------------
+
+@tree.command(name="reserve", description="Сложи автобус в резерв", guild=discord.Object(id=GUILD_ID))
+async def reserve(interaction: discord.Interaction, bus: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("INSERT OR REPLACE INTO reserves (bus) VALUES (?)", (bus,))
+        await db.commit()
+
+    await interaction.response.send_message(f"Автобус {bus} е в резерв.")
+
+
+# ---------------- BROKEN ----------------
+
+@tree.command(name="broken", description="Маркирай автобус като счупен", guild=discord.Object(id=GUILD_ID))
+async def broken(interaction: discord.Interaction, bus: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("INSERT OR REPLACE INTO broken (bus) VALUES (?)", (bus,))
+        await db.commit()
+
+    await interaction.response.send_message(f"Автобус {bus} е в ремонт.")
+
+
+# ---------------- FIX ----------------
+
+@tree.command(name="fix", description="Махни автобус от ремонт", guild=discord.Object(id=GUILD_ID))
+async def fix(interaction: discord.Interaction, bus: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("DELETE FROM broken WHERE bus=?", (bus,))
+        await db.commit()
+
+    await interaction.response.send_message(f"Автобус {bus} е поправен.")
+
+
+# ---------------- SICK ----------------
+
+@tree.command(name="sick", description="Сложи шофьор в болничен", guild=discord.Object(id=GUILD_ID))
+async def sick(interaction: discord.Interaction, driver: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("INSERT OR REPLACE INTO sick (driver) VALUES (?)", (driver,))
+        await db.commit()
+
+    await interaction.response.send_message(f"Шофьор {driver} е в болничен.")
+
+
+# ---------------- UNSICK ----------------
+
+@tree.command(name="unsick", description="Махни шофьор от болничен", guild=discord.Object(id=GUILD_ID))
+async def unsick(interaction: discord.Interaction, driver: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with aiosqlite.connect(DB) as db:
+        await db.execute("DELETE FROM sick WHERE driver=?", (driver,))
+        await db.commit()
+
+    await interaction.response.send_message(f"Шофьор {driver} е върнат от болничен.")
+
+
+# ---------------- NARYAD ----------------
+
+@tree.command(name="naryad", description="Наряд за утре", guild=discord.Object(id=GUILD_ID))
+async def naryad(interaction: discord.Interaction):
+    text = await generate_naryad_text()
+    await interaction.response.send_message(text)
+
+
+# ---------------- AUTO 15:00 ----------------
+
+@tasks.loop(minutes=1)
+async def auto_naryad():
+    now = datetime.now()
+    if now.hour == 15 and now.minute == 0:
+        channel = bot.get_channel(CHANNEL_ID)
+        if channel:
+            text = await generate_naryad_text()
+            await channel.send(text)
+        await asyncio.sleep(60)
+
+
+# ---------------- ГЕНЕРАТОР ----------------
+
+async def generate_naryad_text():
+
+    tomorrow = datetime.now() + timedelta(days=1)
+    date_str = tomorrow.strftime("%d.%m.%Y")
+    line_limits = get_line_limits_for_date(tomorrow)
+
+    async with aiosqlite.connect(DB) as db:
+        buses = await (await db.execute("SELECT bus, driver1, driver2 FROM buses")).fetchall()
+        reserves = [r[0] for r in await (await db.execute("SELECT bus FROM reserves")).fetchall()]
+        broken = [r[0] for r in await (await db.execute("SELECT bus FROM broken")).fetchall()]
+        sick = [r[0] for r in await (await db.execute("SELECT driver FROM sick")).fetchall()]
+
+    if not buses:
+        return "Няма активни автобуси."
+
+    random.shuffle(buses)
+
+    # 🔥 случайни линии но после ще ги подредим
+    available_lines = list(line_limits.keys())
+    random.shuffle(available_lines)
+
+    by_line = {}
+    bus_index = 0
+    reserve_pool = reserves.copy()
+
+    for line in available_lines:
+
+        if bus_index >= len(buses):
+            break
+
+        limit = line_limits[line]
+        assigned = 0
+
+        while assigned < limit and bus_index < len(buses):
+
+            bus, d1, d2 = buses[bus_index]
+            bus_index += 1
+
+            first, second = get_week_shift(d1, d2)
+
+            if bus in broken and reserve_pool:
+                replacement = random.choice(reserve_pool)
+                reserve_pool.remove(replacement)
+                bus = replacement
+
+            f1 = f"{first} (БОЛНИЧЕН)" if first in sick else str(first)
+            f2 = "-"
+            if second:
+                f2 = f"{second} (БОЛНИЧЕН)" if second in sick else str(second)
+
+            if line not in by_line:
+                by_line[line] = []
+
+            by_line[line].append((assigned + 1, bus, f1, f2))
+            assigned += 1
+
+    # 🔥 печатаме подредено
+    text = f"📋 НАРЯД ЗА {date_str}\n\n```"
+    text += f"{'Линия':<6} | {'Кола':<4} | {'ПС1':<6} | {'Водач1':<12} | {'ПС2':<6} | {'Водач2':<12}\n"
+    text += "-" * 80 + "\n"
+
+    for line in sorted(by_line.keys()):
+        for car, bus, f1, f2 in by_line[line]:
+            text += f"{line:<6} | {car:<4} | {bus:<6} | {f1:<12} | {'-':<6} | {f2:<12}\n"
+        text += "-" * 80 + "\n"
+
+    text += "```"
+
+    if broken:
+        text += f"\n🔧 РЕМОНТ: {', '.join(map(str, broken))}"
+    if reserves:
+        text += f"\n🟡 РЕЗЕРВ: {', '.join(map(str, reserves))}"
+    if sick:
+        text += f"\n🏥 БОЛНИЧЕН: {', '.join(map(str, sick))}"
+
+    return text
+
+
+# ---------------- START ----------------
+
+bot.run(TOKEN)
