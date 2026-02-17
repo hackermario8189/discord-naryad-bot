@@ -7,7 +7,6 @@ from discord import app_commands
 from discord.ext import tasks
 from datetime import datetime, timedelta
 
-load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 OWNER_ID = 985188925360443452
