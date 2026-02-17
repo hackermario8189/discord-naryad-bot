@@ -5,7 +5,6 @@ import random
 import asyncio
 from discord import app_commands
 from discord.ext import tasks
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
 load_dotenv()
