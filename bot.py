@@ -7,7 +7,8 @@ from discord import app_commands
 from discord.ext import tasks
 from datetime import datetime, timedelta
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.environ["DISCORD_TOKEN"]
+
 
 OWNER_ID = 985188925360443452
 GUILD_ID = 1456265813190512763
