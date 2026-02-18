@@ -1,0 +1,31 @@
+name: Control Railway Service
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # 07:00 BG time (UTC+3 → 04:00 UTC)
+    - cron: '0 19 * * *'  # 22:00 BG time (UTC+3 → 19:00 UTC)
+  workflow_dispatch:
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Start or Stop Railway Service
+        run: |
+          echo "Triggered by: ${{ github.event.schedule }}"
+
+          if [ "${{ github.event.schedule }}" = "0 4 * * *" ]; then
+            echo "Starting Railway service..."
+            curl -X POST https://backboard.railway.app/graphql \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d '{"query":"mutation { serviceUp(id: \"3d2ee4dc-3c77-4a27-b771-62cb8bc10ff9\") }"}'
+          else
+            echo "Stopping Railway service..."
+            curl -X POST https://backboard.railway.app/graphql \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+              -d '{"query":"mutation { serviceDown(id: \"3d2ee4dc-3c77-4a27-b771-62cb8bc10ff9\") }"}'
+          fi
+
