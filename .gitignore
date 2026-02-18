@@ -1,0 +1,4 @@
+naryad.db
+.venv/
+__pycache__/
+.env
