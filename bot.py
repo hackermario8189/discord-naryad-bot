@@ -183,7 +183,9 @@ async def reserve(interaction: discord.Interaction, bus: int):
 
     await interaction.response.send_message(f"{bus} е в резерв.")
 
+
 #---------------- UNRESERVE ----------------
+
 @tree.command(name="unreserve", description="Махни автобус от резерв", guild=discord.Object(id=GUILD_ID))
 async def unreserve(interaction: discord.Interaction, bus: int):
 
