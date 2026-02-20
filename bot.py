@@ -123,23 +123,6 @@ async def addtitular(interaction: discord.Interaction, driver1: int, bus: int, d
 
     await interaction.response.send_message("Записано.")
 
-    # ---------------- REMOVE TITULAR ----------------
-
-@tree.command(name="removetitular", description="Махни титуляр", guild=discord.Object(id=GUILD_ID))
-async def removetitular(interaction: discord.Interaction, bus: int):
-
-    if interaction.user.id != OWNER_ID:
-        await interaction.response.send_message("Нямаш право.", ephemeral=True)
-        return
-
-    async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM buses WHERE bus=$1", bus)
-
-    if result == "DELETE 0":
-        await interaction.response.send_message("Няма такъв автобус.")
-    else:
-        await interaction.response.send_message(f"{bus} махнат.")
-
 
 # ---------------- DRIVERS ----------------
 
@@ -182,24 +165,6 @@ async def reserve(interaction: discord.Interaction, bus: int):
         )
 
     await interaction.response.send_message(f"{bus} е в резерв.")
-
-
-#---------------- UNRESERVE ----------------
-
-@tree.command(name="unreserve", description="Махни автобус от резерв", guild=discord.Object(id=GUILD_ID))
-async def unreserve(interaction: discord.Interaction, bus: int):
-
-    if interaction.user.id != OWNER_ID:
-        await interaction.response.send_message("Нямаш право.", ephemeral=True)
-        return
-
-    async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM reserves WHERE bus=$1", bus)
-
-    if result == "DELETE 0":
-        await interaction.response.send_message("Не е в резерв.")
-    else:
-        await interaction.response.send_message(f"{bus} махнат от резерв.")
 
 
 # ---------------- BROKEN ----------------
