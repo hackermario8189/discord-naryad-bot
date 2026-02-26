@@ -253,7 +253,10 @@ async def fix(interaction: discord.Interaction, bus: int):
 @tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
 async def naryad(interaction: discord.Interaction):
     text = await generate_naryad_text()
-    await interaction.response.send_message(text)
+    await interaction.response.send_message(
+        "@everyone\n" + text,
+        allowed_mentions=discord.AllowedMentions(everyone=True)
+    )
 
 
 # ---------------- AUTO ----------------
@@ -265,7 +268,10 @@ async def auto_naryad():
         channel = bot.get_channel(CHANNEL_ID)
         if channel:
             text = await generate_naryad_text()
-            await channel.send(text)
+            await channel.send(
+                "@everyone\n" + text,
+                allowed_mentions=discord.AllowedMentions(everyone=True)
+            )
         await asyncio.sleep(60)
 
 
