@@ -128,7 +128,7 @@ async def addtitular(interaction: discord.Interaction, driver1: int, bus: int, d
 
 # ---------------- REMOVE TITULAR ----------------
 
-@tree.command(name="removetitular", description="Премахни титуляр (автобус) от списъка", guild=discord.Object(id=GUILD_ID))
+@tree.command(name="removetitular", description="Премахни титуляр (автобус)", guild=discord.Object(id=GUILD_ID))
 async def removetitular(interaction: discord.Interaction, bus: int):
 
     if interaction.user.id != OWNER_ID:
@@ -142,37 +142,49 @@ async def removetitular(interaction: discord.Interaction, bus: int):
         await interaction.response.send_message(f"{bus} не е намерен.")
         return
 
-    await interaction.response.send_message(f"{bus} е премахнат от титулярите.")
+    await interaction.response.send_message(f"{bus} е премахнат.")
 
 
-# ---------------- DRIVERS ----------------
+# ---------------- SICK ----------------
 
-@tree.command(name="drivers", description="Покажи всички титуляри", guild=discord.Object(id=GUILD_ID))
-async def drivers(interaction: discord.Interaction):
+@tree.command(name="sick", description="Водач в болничен", guild=discord.Object(id=GUILD_ID))
+async def sick_cmd(interaction: discord.Interaction, driver: int):
 
     if interaction.user.id != OWNER_ID:
         await interaction.response.send_message("Нямаш право.", ephemeral=True)
         return
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM buses ORDER BY bus ASC")
+        await conn.execute(
+            "INSERT INTO sick(driver) VALUES($1) ON CONFLICT DO NOTHING",
+            driver
+        )
 
-    if not rows:
-        await interaction.response.send_message("Няма записани автобуси.")
+    await interaction.response.send_message(f"{driver} е в болничен.")
+
+
+# ---------------- UNSICK ----------------
+
+@tree.command(name="unsick", description="Махни от болничен", guild=discord.Object(id=GUILD_ID))
+async def unsick_cmd(interaction: discord.Interaction, driver: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
         return
 
-    text = "БУС   | ПЪРВА   | ВТОРА\n"
-    text += "-" * 35 + "\n"
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM sick WHERE driver=$1", driver)
 
-    for row in rows:
-        text += f"{row['bus']:<6}| {row['driver1']:<8}| {row['driver2'] if row['driver2'] else '-'}\n"
+    if result.endswith("0"):
+        await interaction.response.send_message("Не е в болничен.")
+        return
 
-    await interaction.response.send_message(f"```{text}```")
+    await interaction.response.send_message("Махнат от болничен.")
 
 
 # ---------------- RESERVE ----------------
 
-@tree.command(name="reserve", description="Сложи автобус в резерв", guild=discord.Object(id=GUILD_ID))
+@tree.command(name="reserve", description="Резерв", guild=discord.Object(id=GUILD_ID))
 async def reserve(interaction: discord.Interaction, bus: int):
 
     if interaction.user.id != OWNER_ID:
@@ -185,12 +197,12 @@ async def reserve(interaction: discord.Interaction, bus: int):
             bus
         )
 
-    await interaction.response.send_message(f"{bus} е в резерв.")
+    await interaction.response.send_message("В резерв.")
 
 
 # ---------------- REMOVE RESERVE ----------------
 
-@tree.command(name="removereserve", description="Махни автобус от резерв", guild=discord.Object(id=GUILD_ID))
+@tree.command(name="removereserve", description="Махни резерв", guild=discord.Object(id=GUILD_ID))
 async def removereserve(interaction: discord.Interaction, bus: int):
 
     if interaction.user.id != OWNER_ID:
@@ -198,19 +210,15 @@ async def removereserve(interaction: discord.Interaction, bus: int):
         return
 
     async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM reserves WHERE bus=$1", bus)
+        await conn.execute("DELETE FROM reserves WHERE bus=$1", bus)
 
-    if result.endswith("0"):
-        await interaction.response.send_message(f"{bus} не е в резерв.")
-        return
-
-    await interaction.response.send_message(f"{bus} е махнат от резерв.")
+    await interaction.response.send_message("Махнат резерв.")
 
 
 # ---------------- BROKEN ----------------
 
-@tree.command(name="broken", description="Маркирай автобус като счупен", guild=discord.Object(id=GUILD_ID))
-async def broken(interaction: discord.Interaction, bus: int):
+@tree.command(name="broken", description="В ремонт", guild=discord.Object(id=GUILD_ID))
+async def broken_cmd(interaction: discord.Interaction, bus: int):
 
     if interaction.user.id != OWNER_ID:
         await interaction.response.send_message("Нямаш право.", ephemeral=True)
@@ -222,12 +230,12 @@ async def broken(interaction: discord.Interaction, bus: int):
             bus
         )
 
-    await interaction.response.send_message(f"{bus} е в ремонт.")
+    await interaction.response.send_message("В ремонт.")
 
 
 # ---------------- FIX ----------------
 
-@tree.command(name="fix", description="Махни автобус от ремонт", guild=discord.Object(id=GUILD_ID))
+@tree.command(name="fix", description="Поправен", guild=discord.Object(id=GUILD_ID))
 async def fix(interaction: discord.Interaction, bus: int):
 
     if interaction.user.id != OWNER_ID:
@@ -237,12 +245,12 @@ async def fix(interaction: discord.Interaction, bus: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM broken WHERE bus=$1", bus)
 
-    await interaction.response.send_message(f"{bus} е поправен.")
+    await interaction.response.send_message("Поправен.")
 
 
 # ---------------- NARYAD ----------------
 
-@tree.command(name="naryad", description="Наряд за утре", guild=discord.Object(id=GUILD_ID))
+@tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
 async def naryad(interaction: discord.Interaction):
     text = await generate_naryad_text()
     await interaction.response.send_message(text)
@@ -280,7 +288,9 @@ async def generate_naryad_text():
 
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
-    reserve_pool = [r["bus"] for r in reserves]
+
+    reserve_list = [r["bus"] for r in reserves]
+    reserve_pool = reserve_list.copy()
 
     random.shuffle(buses)
 
@@ -317,10 +327,7 @@ async def generate_naryad_text():
             if second:
                 f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
 
-            if line not in by_line:
-                by_line[line] = []
-
-            by_line[line].append((assigned + 1, bus, f1, f2))
+            by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
             assigned += 1
 
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
@@ -333,6 +340,15 @@ async def generate_naryad_text():
         text += "-" * 75 + "\n"
 
     text += "```"
+
+    text += "\nРЕЗЕРВИ:\n"
+    text += ", ".join(map(str, sorted(reserve_list))) if reserve_list else "няма"
+
+    text += "\n\nБОЛНИЧНИ:\n"
+    text += ", ".join(map(str, sorted(sick_set))) if sick_set else "няма"
+
+    text += "\n\nВ РЕМОНТ:\n"
+    text += ", ".join(map(str, sorted(broken_set))) if broken_set else "няма"
 
     return text
 
