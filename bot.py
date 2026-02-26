@@ -145,6 +145,31 @@ async def removetitular(interaction: discord.Interaction, bus: int):
     await interaction.response.send_message(f"{bus} е премахнат.")
 
 
+# ---------------- DRIVERS ----------------
+
+@tree.command(name="drivers", description="Покажи всички титуляри", guild=discord.Object(id=GUILD_ID))
+async def drivers(interaction: discord.Interaction):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM buses ORDER BY bus ASC")
+
+    if not rows:
+        await interaction.response.send_message("Няма записани автобуси.")
+        return
+
+    text = "БУС   | ПЪРВА   | ВТОРА\n"
+    text += "-" * 35 + "\n"
+
+    for row in rows:
+        text += f"{row['bus']:<6}| {row['driver1']:<8}| {row['driver2'] if row['driver2'] else '-'}\n"
+
+    await interaction.response.send_message(f"```{text}```")
+
+
 # ---------------- SICK ----------------
 
 @tree.command(name="sick", description="Водач в болничен", guild=discord.Object(id=GUILD_ID))
