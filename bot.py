@@ -83,6 +83,13 @@ async def init_db():
             );
         """)
 
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS assigned_reserves (
+                broken_bus BIGINT PRIMARY KEY,
+                reserve_bus BIGINT NOT NULL
+            );
+        """)
+
 
 # ---------------- РОТАЦИЯ ----------------
 
@@ -225,6 +232,37 @@ async def reserve(interaction: discord.Interaction, bus: int):
     await interaction.response.send_message("В резерв.")
 
 
+# ---------------- ASSIGN RESERVE ----------------
+
+@tree.command(name="assignreserve", description="Закачи резерва към счупен автобус", guild=discord.Object(id=GUILD_ID))
+async def assignreserve(interaction: discord.Interaction, reserve_bus: int, broken_bus: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    async with pool.acquire() as conn:
+        reserve_exists = await conn.fetchval("SELECT 1 FROM reserves WHERE bus=$1", reserve_bus)
+        broken_exists = await conn.fetchval("SELECT 1 FROM broken WHERE bus=$1", broken_bus)
+
+        if not reserve_exists:
+            await interaction.response.send_message(f"Резервата {reserve_bus} не е записана в резерв.")
+            return
+
+        if not broken_exists:
+            await interaction.response.send_message(f"Автобус {broken_bus} не е записан в ремонт.")
+            return
+
+        await conn.execute("""
+            INSERT INTO assigned_reserves(broken_bus, reserve_bus)
+            VALUES($1, $2)
+            ON CONFLICT (broken_bus)
+            DO UPDATE SET reserve_bus=$2
+        """, broken_bus, reserve_bus)
+
+    await interaction.response.send_message(f"Резерва {reserve_bus} е закачена към счупения автобус {broken_bus}.")
+
+
 # ---------------- REMOVE RESERVE ----------------
 
 @tree.command(name="removereserve", description="Махни резерв", guild=discord.Object(id=GUILD_ID))
@@ -236,6 +274,7 @@ async def removereserve(interaction: discord.Interaction, bus: int):
 
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM reserves WHERE bus=$1", bus)
+        await conn.execute("DELETE FROM assigned_reserves WHERE reserve_bus=$1", bus)
 
     await interaction.response.send_message("Махнат резерв.")
 
@@ -269,6 +308,7 @@ async def fix(interaction: discord.Interaction, bus: int):
 
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM broken WHERE bus=$1", bus)
+        await conn.execute("DELETE FROM assigned_reserves WHERE broken_bus=$1", bus)
 
     await interaction.response.send_message("Поправен.")
 
@@ -313,15 +353,21 @@ async def generate_naryad_text():
         reserves = await conn.fetch("SELECT bus FROM reserves")
         broken = await conn.fetch("SELECT bus FROM broken")
         sick = await conn.fetch("SELECT driver FROM sick")
+        assigned_reserves = await conn.fetch("SELECT broken_bus, reserve_bus FROM assigned_reserves")
 
     if not buses:
         return "Няма записани автобуси."
 
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
+    assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
 
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
+
+    for used_reserve in assigned_map.values():
+        if used_reserve in reserve_pool:
+            reserve_pool.remove(used_reserve)
 
     random.shuffle(buses)
 
@@ -344,13 +390,16 @@ async def generate_naryad_text():
             row = buses[bus_index]
             bus_index += 1
 
-            bus = row["bus"]
+            original_bus = row["bus"]
+            bus = original_bus
             d1 = row["driver1"]
             d2 = row["driver2"]
 
             first, second = get_week_shift(d1, d2)
 
-            if bus in broken_set and reserve_pool:
+            if original_bus in broken_set and original_bus in assigned_map:
+                bus = assigned_map[original_bus]
+            elif original_bus in broken_set and reserve_pool:
                 bus = reserve_pool.pop(0)
 
             f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
