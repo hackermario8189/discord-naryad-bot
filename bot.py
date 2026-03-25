@@ -15,6 +15,7 @@ print("DB_URL_RAW:", DATABASE_URL)
 OWNER_ID = 985188925360443452
 GUILD_ID = 1456265813190512763
 CHANNEL_ID = 1473183167895830568
+PTEN_CHANNEL_ID = 1484651462721015838  # СМЕНИ С ТВОЯ КАНАЛ
 
 pool = None
 
@@ -40,6 +41,20 @@ BASE_LINE_LIMITS = {
     5: 1,
     67: 1,
     28: 2
+}
+LINES_INFO = {
+    1: ("Гео Милев", "Кокалянско ханче"),
+    3: ("Гео Милев", "Долни Пасарел"),
+    5: ("Гео Милев", "Долни Лозен"),
+    26: ("ж.к. Обеля 1", "Гниляне"),
+    28: ("Мрамор", "Локорско"),
+    31: ("Сливница", "Голяновци"),
+    64: ("Зоопарка", "Център по хигиена"),
+    67: ("Симеоново", "Семинарията"),
+    68: ("Зоопарка", "Симеоново"),
+    72: ("Хотел Плиска", "ж.к. Западен парк"),
+    98: ("Зоопарка", "Железница"),
+    150: ("ж.к. Обеля 1", "Плодохранилище"),
 }
 
 def get_line_limits_for_date(date):
@@ -103,13 +118,83 @@ def get_week_shift(driver1, driver2):
     return (driver2, driver1) if week_number % 2 == 0 else (driver1, driver2)
 
 
+# ---------------- ПЪТЕН ЛИСТ ----------------
+
+def generate_trip_sheet(line, car, bus, driver1, driver2):
+
+    start, end = LINES_INFO.get(line, ("???", "???"))
+
+    if car <= 4:
+        shifts = [
+            ("04:30", "12:30"),
+            ("04:45", "12:45"),
+            ("05:00", "13:00"),
+            ("05:15", "13:15")
+        ]
+        shift_name = "1-ва смяна"
+    else:
+        shifts = [
+            ("12:45", "21:30"),
+            ("13:00", "21:45"),
+            ("13:15", "22:00"),
+            ("13:30", "22:15")
+        ]
+        shift_name = "2-ра смяна"
+
+    idx = (car - 1) % 4
+    start_time, end_time = shifts[idx]
+
+    t = datetime.strptime(start_time, "%H:%M")
+    end_dt = datetime.strptime(end_time, "%H:%M")
+
+    trips = []
+
+    while t < end_dt:
+        dep = t
+        arr = t + timedelta(minutes=30)
+        trips.append((dep.strftime("%H:%M"), arr.strftime("%H:%M")))
+        t += timedelta(minutes=60)
+
+    text = f"📋 ПЪТЕН ЛИСТ\n"
+    text += f"Линия: {line}\n"
+    text += f"Кола: {car}\n"
+    text += f"ПС: {bus}\n"
+    text += f"{shift_name}\n"
+    text += f"Водач1: {driver1}\n"
+    text += f"Водач2: {driver2}\n\n"
+
+    text += f"{start:<20} | ЧАС | {end}\n"
+    text += "-" * 45 + "\n"
+
+    for d, a in trips:
+        text += f"{start:<20} | {d} | {end} {a}\n"
+
+    return text
+
+
+# ---------------- SEND TRIP SHEETS ----------------
+
+async def send_trip_sheets(by_line):
+    channel = bot.get_channel(PTEN_CHANNEL_ID)
+    if not channel:
+        return
+
+    for line in by_line:
+        for car, bus, f1, f2 in by_line[line]:
+            sheet = generate_trip_sheet(line, car, bus, f1, f2)
+            await channel.send(f"```{sheet}```")
+
+
 # ---------------- READY ----------------
 
 @bot.event
 async def on_ready():
     await init_db()
     await tree.sync(guild=discord.Object(id=GUILD_ID))
-    auto_naryad.start()
+
+    if not auto_naryad.is_running():
+        auto_naryad.start()
+
     print(f"Bot ready as {bot.user}")
 
 
@@ -324,6 +409,32 @@ async def naryad(interaction: discord.Interaction):
     )
 
 
+# ---------------- TRIPSHEETS ----------------
+
+@tree.command(name="tripsheets", description="Пусни само пътни листове", guild=discord.Object(id=GUILD_ID))
+async def tripsheets(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    _, by_line = await generate_naryad_text(return_data=True)
+    await send_trip_sheets(by_line)
+    await interaction.response.send_message("Пътните листове са пуснати.")
+
+
+# ---------------- ROADINFO ----------------
+
+@tree.command(name="roadinfo", description="Наряд + пътни листове", guild=discord.Object(id=GUILD_ID))
+async def roadinfo(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    text, by_line = await generate_naryad_text(return_data=True)
+    await interaction.response.send_message(text)
+    await send_trip_sheets(by_line)
+
+
 # ---------------- AUTO ----------------
 
 @tasks.loop(minutes=1)
@@ -342,7 +453,7 @@ async def auto_naryad():
 
 # ---------------- ГЕНЕРАТОР ----------------
 
-async def generate_naryad_text():
+async def generate_naryad_text(return_data=False):
 
     tomorrow = datetime.now() + timedelta(days=1)
     date_str = tomorrow.strftime("%d.%m.%Y")
@@ -356,7 +467,7 @@ async def generate_naryad_text():
         assigned_reserves = await conn.fetch("SELECT broken_bus, reserve_bus FROM assigned_reserves")
 
     if not buses:
-        return "Няма записани автобуси."
+        return "Няма записани автобуси." if not return_data else ("Няма записани автобуси.", {})
 
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
@@ -429,6 +540,17 @@ async def generate_naryad_text():
 
     text += "\n\nВ РЕМОНТ:\n"
     text += ", ".join(map(str, sorted(broken_set))) if broken_set else "няма"
+
+    if return_data:
+        return text, by_line
+
+    # ---------------- ПЪТНИ ЛИСТОВЕ ----------------
+    channel = bot.get_channel(PTEN_CHANNEL_ID)
+    if channel:
+        for line in by_line:
+            for car, bus, f1, f2 in by_line[line]:
+                sheet = generate_trip_sheet(line, car, bus, f1, f2)
+                await channel.send(f"```{sheet}```")
 
     return text
 
