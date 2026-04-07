@@ -531,71 +531,67 @@ async def generate_naryad_text(return_data=False):
 
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
-
     for used_reserve in assigned_map.values():
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
-    # разделяме автобусите по групи
+    # Разделяме автобусите по групи 1xxx и 2xxx
     buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
     buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
     random.shuffle(buses_1xxx)
     random.shuffle(buses_2xxx)
-    buses = buses_1xxx + buses_2xxx
 
     by_line = {}
-    bus_index = 0
-    available_lines = list(line_limits.keys())
-    random.shuffle(available_lines)
 
-    for line in available_lines:
-        if bus_index >= len(buses):
-            break
+    # Функция за разпределяне на автобуси по линии
+    def assign_buses_to_lines(bus_group):
+        local_index = 0
+        local_buses = bus_group.copy()
+        random.shuffle(local_buses)
+        for line in sorted(line_limits.keys()):
+            limit = line_limits[line]
+            assigned = 0
+            while assigned < limit and local_index < len(local_buses):
+                row = local_buses[local_index]
+                local_index += 1
+                bus_number = row['bus']
+                allowed_lines = get_allowed_lines_for_bus(bus_number)
+                if line not in allowed_lines:
+                    continue
 
-        limit = line_limits[line]
-        assigned = 0
+                bus = bus_number
+                d1 = row["driver1"]
+                d2 = row["driver2"]
 
-        while assigned < limit and bus_index < len(buses):
-            row = buses[bus_index]
-            bus_index += 1
+                first, second = get_week_shift(d1, d2)
 
-            original_bus = row["bus"]
-            allowed_lines = get_allowed_lines_for_bus(original_bus)
-            if line not in allowed_lines:
-                continue
+                # Ако има фиксирана смяна
+                if hasattr(bot, "forced_shifts"):
+                    if first in bot.forced_shifts:
+                        if bot.forced_shifts[first] == 2:
+                            first, second = second, first
+                    if second and second in bot.forced_shifts:
+                        if bot.forced_shifts[second] == 1:
+                            first, second = second, first
 
-            bus = original_bus
-            d1 = row["driver1"]
-            d2 = row["driver2"]
+                # Замяна на счупен автобус
+                if bus_number in broken_set:
+                    if bus_number in assigned_map:
+                        bus = assigned_map[bus_number]
+                    elif reserve_pool:
+                        bus = reserve_pool.pop(0)
 
-            # проверка за фиксирана смяна
-            if hasattr(bot, "forced_shifts"):
-                forced_shift_d1 = bot.forced_shifts.get(d1)
-                forced_shift_d2 = bot.forced_shifts.get(d2) if d2 else None
-            else:
-                forced_shift_d1 = forced_shift_d2 = None
+                f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
+                f2 = "-"
+                if second:
+                    f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
 
-            first, second = get_week_shift(d1, d2)
+                by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
+                assigned += 1
 
-            if forced_shift_d1 == 2:
-                first, second = second, first
-            if forced_shift_d2 == 2 and second is not None:
-                # ако вторият водач е фиксиран на 2-ра, няма да сменяме първия, само втория
-                second = second
-
-            # Замяна на счупен автобус
-            if original_bus in broken_set and original_bus in assigned_map:
-                bus = assigned_map[original_bus]
-            elif original_bus in broken_set and reserve_pool:
-                bus = reserve_pool.pop(0)
-
-            f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-            f2 = "-"
-            if second:
-                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
-
-            by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
-            assigned += 1
+    # Разпределяме първо 1xxx, после 2xxx
+    assign_buses_to_lines(buses_1xxx)
+    assign_buses_to_lines(buses_2xxx)
 
     # ---------------- ГЕНЕРИРАНЕ НА ТЕКСТ ----------------
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
@@ -633,7 +629,7 @@ async def generate_naryad_text(return_data=False):
                 await channel.send(f"```{sheet}```")
 
     return text
-    
+
 
 # ---------------- START ----------------
 
