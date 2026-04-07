@@ -530,38 +530,34 @@ async def generate_naryad_text(return_data=False):
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
-
     for used_reserve in assigned_map.values():
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
     # разделяме автобусите по групи
-    all_buses = [b for b in buses if 1000 <= b['bus'] <= 2999]
-    random.shuffle(all_buses)
+    group_1_buses = [b for b in buses if 1000 <= b['bus'] <= 1999]
+    group_2_buses = [b for b in buses if 2000 <= b['bus'] <= 2999]
+    random.shuffle(group_1_buses)
+    random.shuffle(group_2_buses)
 
     by_line = {}
 
-    # функция за разпределяне на автобусите по линии
-    def assign_buses_to_lines(allbusses):
+    # функция за разпределяне на автобусите по линия
+    def assign_group_to_lines(bus_group):
         nonlocal by_line
         bus_index = 0
-        available_lines = list(line_limits.keys())
-        random.shuffle(available_lines)
-
-        for line in available_lines:
+        for line in sorted(line_limits.keys()):
             limit = line_limits[line]
             assigned = 0
-
             while assigned < limit and bus_index < len(bus_group):
                 row = bus_group[bus_index]
                 bus_index += 1
 
-                original_bus = row["bus"]
-                allowed_lines = get_allowed_lines_for_bus(original_bus)
-                if line not in allowed_lines:
+                bus_num = row["bus"]
+                if line not in get_allowed_lines_for_bus(bus_num):
                     continue
 
-                bus = original_bus
+                bus = bus_num
                 d1 = row["driver1"]
                 d2 = row["driver2"]
 
@@ -578,9 +574,9 @@ async def generate_naryad_text(return_data=False):
                         first = d1 if bot.forced_shifts[d2] == 1 else None
 
                 # Замяна на счупен автобус
-                if original_bus in broken_set and original_bus in assigned_map:
-                    bus = assigned_map[original_bus]
-                elif original_bus in broken_set and reserve_pool:
+                if bus_num in broken_set and bus_num in assigned_map:
+                    bus = assigned_map[bus_num]
+                elif bus_num in broken_set and reserve_pool:
                     bus = reserve_pool.pop(0)
 
                 f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first) if first else "-"
@@ -589,9 +585,9 @@ async def generate_naryad_text(return_data=False):
                 by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
                 assigned += 1
 
-    # разпределяме и двете групи
-    assign_buses_to_lines(buses_1xxx)
-    assign_buses_to_lines(buses_2xxx)
+    # разпределяме всяка група по нейните линии
+    assign_group_to_lines(group_1_buses)
+    assign_group_to_lines(group_2_buses)
 
     # ---------------- ГЕНЕРИРАНЕ НА ТЕКСТ ----------------
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
@@ -629,7 +625,6 @@ async def generate_naryad_text(return_data=False):
                 await channel.send(f"```{sheet}```")
 
     return text
-
 
 # ---------------- START ----------------
 
