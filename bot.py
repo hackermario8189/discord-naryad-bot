@@ -536,15 +536,13 @@ async def generate_naryad_text(return_data=False):
             reserve_pool.remove(used_reserve)
 
     # разделяме автобусите по групи
-    buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
-    buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
-    random.shuffle(buses_1xxx)
-    random.shuffle(buses_2xxx)
+    all_buses = [b for b in buses if 1000 <= b['bus'] <= 2999]
+    random.shuffle(all_buses)
 
     by_line = {}
 
     # функция за разпределяне на автобусите по линии
-    def assign_buses_to_lines(bus_group):
+    def assign_buses_to_lines(allbusses):
         nonlocal by_line
         bus_index = 0
         available_lines = list(line_limits.keys())
