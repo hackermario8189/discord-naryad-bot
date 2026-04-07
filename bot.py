@@ -510,7 +510,7 @@ async def auto_naryad():
 
 # ---------------- ГЕНЕРАТОР ----------------
 
-async def generate_naryad_text(return_data=False):
+aasync def generate_naryad_text(return_data=False):
     tomorrow = datetime.now() + timedelta(days=1)
     date_str = tomorrow.strftime("%d.%m.%Y")
     line_limits = get_line_limits_for_date(tomorrow)
@@ -528,14 +528,14 @@ async def generate_naryad_text(return_data=False):
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
-
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
+
     for used_reserve in assigned_map.values():
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
-    # Разделяме автобусите по групи 1xxx и 2xxx
+    # разделяме автобусите по групи
     buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
     buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
     random.shuffle(buses_1xxx)
@@ -543,53 +543,55 @@ async def generate_naryad_text(return_data=False):
 
     by_line = {}
 
-    # Функция за разпределяне на автобуси по линии
+    # функция за разпределяне на автобусите по линии
     def assign_buses_to_lines(bus_group):
-        local_index = 0
-        local_buses = bus_group.copy()
-        random.shuffle(local_buses)
-        for line in sorted(line_limits.keys()):
+        nonlocal by_line
+        bus_index = 0
+        available_lines = list(line_limits.keys())
+        random.shuffle(available_lines)
+
+        for line in available_lines:
             limit = line_limits[line]
             assigned = 0
-            while assigned < limit and local_index < len(local_buses):
-                row = local_buses[local_index]
-                local_index += 1
-                bus_number = row['bus']
-                allowed_lines = get_allowed_lines_for_bus(bus_number)
+
+            while assigned < limit and bus_index < len(bus_group):
+                row = bus_group[bus_index]
+                bus_index += 1
+
+                original_bus = row["bus"]
+                allowed_lines = get_allowed_lines_for_bus(original_bus)
                 if line not in allowed_lines:
                     continue
 
-                bus = bus_number
+                bus = original_bus
                 d1 = row["driver1"]
                 d2 = row["driver2"]
 
+                # смяна по седмица
                 first, second = get_week_shift(d1, d2)
 
-                # Ако има фиксирана смяна
+                # смяна по фиксирана команда
                 if hasattr(bot, "forced_shifts"):
-                    if first in bot.forced_shifts:
-                        if bot.forced_shifts[first] == 2:
-                            first, second = second, first
-                    if second and second in bot.forced_shifts:
-                        if bot.forced_shifts[second] == 1:
-                            first, second = second, first
+                    if d1 in bot.forced_shifts:
+                        first = d1 if bot.forced_shifts[d1] == 1 else None
+                        second = d2 if bot.forced_shifts[d1] == 2 else None
+                    if d2 in bot.forced_shifts:
+                        second = d2 if bot.forced_shifts[d2] == 2 else None
+                        first = d1 if bot.forced_shifts[d2] == 1 else None
 
                 # Замяна на счупен автобус
-                if bus_number in broken_set:
-                    if bus_number in assigned_map:
-                        bus = assigned_map[bus_number]
-                    elif reserve_pool:
-                        bus = reserve_pool.pop(0)
+                if original_bus in broken_set and original_bus in assigned_map:
+                    bus = assigned_map[original_bus]
+                elif original_bus in broken_set and reserve_pool:
+                    bus = reserve_pool.pop(0)
 
-                f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-                f2 = "-"
-                if second:
-                    f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+                f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first) if first else "-"
+                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second) if second else "-"
 
                 by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
                 assigned += 1
 
-    # Разпределяме първо 1xxx, после 2xxx
+    # разпределяме и двете групи
     assign_buses_to_lines(buses_1xxx)
     assign_buses_to_lines(buses_2xxx)
 
@@ -630,7 +632,7 @@ async def generate_naryad_text(return_data=False):
 
     return text
 
-
+    
 # ---------------- START ----------------
 
 bot.run(TOKEN)
