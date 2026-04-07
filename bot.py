@@ -420,6 +420,41 @@ async def fix(interaction: discord.Interaction, bus: int):
     await interaction.response.send_message("Поправен.")
 
 
+# ---------------- changetimetit ----------------
+    @tree.command(
+    name="changetimefortitular",
+    description="Промени смяната на титуляр (1 или 2)",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def changetimefortitular(interaction: discord.Interaction, driver: int, shift: int):
+    """
+    shift: 1 за първа смяна, 2 за втора смяна
+    """
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    if shift not in [1, 2]:
+        await interaction.response.send_message("Смяната трябва да е 1 или 2.", ephemeral=True)
+        return
+
+    async with pool.acquire() as conn:
+        # Взимаме всички автобуси, където шофьорът е титуляр
+        rows = await conn.fetch("SELECT * FROM buses WHERE driver1=$1 OR driver2=$1", driver)
+
+    if not rows:
+        await interaction.response.send_message(f"{driver} не е титуляр никъде.", ephemeral=True)
+        return
+
+    # Записваме желаната смяна във глобален dict или база данни
+    # За по-просто – ще ползваме просто in-memory dict
+    if not hasattr(bot, "forced_shifts"):
+        bot.forced_shifts = {}
+
+    bot.forced_shifts[driver] = shift
+    await interaction.response.send_message(f"Шофьор {driver} е фиксиран на смяна {shift}.")
+
+
 # ---------------- NARYAD ----------------
 
 @tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
