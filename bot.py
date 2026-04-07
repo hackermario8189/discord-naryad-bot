@@ -501,16 +501,23 @@ async def generate_naryad_text(return_data=False):
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
-    random.shuffle(buses)
+   # разделяме автобусите по групи
+buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
+buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
+random.shuffle(buses_1xxx)
+random.shuffle(buses_2xxx)
 
-    by_line = {}
-    bus_index = 0
-    available_lines = list(line_limits.keys())
-    random.shuffle(available_lines)
+# комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
+buses = buses_1xxx + buses_2xxx
 
-    for line in available_lines:
-        if bus_index >= len(buses):
-            break
+by_line = {}
+bus_index = 0
+available_lines = list(line_limits.keys())
+random.shuffle(available_lines)
+
+for line in available_lines:
+    if bus_index >= len(buses):
+        break
 
         limit = line_limits[line]
         assigned = 0
