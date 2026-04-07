@@ -72,8 +72,12 @@ LINE_GROUPS = {
 }
 
 def get_allowed_lines_for_bus(bus):
-    first_digit = int(str(bus)[0])
-    return LINE_GROUPS.get(first_digit, [])
+    # върни всички линии, които имат този автобус в групата
+    allowed = []
+    for group_lines in LINE_GROUPS.values():
+        if bus in group_lines:
+            allowed.extend(group_lines)
+    return allowed
 
 def get_line_limits_for_date(date):
     limits = BASE_LINE_LIMITS.copy()
