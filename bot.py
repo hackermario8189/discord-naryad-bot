@@ -420,8 +420,9 @@ async def fix(interaction: discord.Interaction, bus: int):
     await interaction.response.send_message("Поправен.")
 
 
-# ---------------- changetimetit ----------------
-    @tree.command(
+# ---------------- CHANGETIME FOR TITULAR ----------------
+
+@tree.command(
     name="changetimefortitular",
     description="Промени смяната на титуляр (1 или 2)",
     guild=discord.Object(id=GUILD_ID)
@@ -447,7 +448,6 @@ async def changetimefortitular(interaction: discord.Interaction, driver: int, sh
         return
 
     # Записваме желаната смяна във глобален dict или база данни
-    # За по-просто – ще ползваме просто in-memory dict
     if not hasattr(bot, "forced_shifts"):
         bot.forced_shifts = {}
 
