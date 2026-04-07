@@ -472,7 +472,6 @@ async def auto_naryad():
 # ---------------- ГЕНЕРАТОР ----------------
 
 async def generate_naryad_text(return_data=False):
-
     tomorrow = datetime.now() + timedelta(days=1)
     date_str = tomorrow.strftime("%d.%m.%Y")
     line_limits = get_line_limits_for_date(tomorrow)
@@ -502,7 +501,6 @@ async def generate_naryad_text(return_data=False):
 
     by_line = {}
     bus_index = 0
-
     available_lines = list(line_limits.keys())
     random.shuffle(available_lines)
 
@@ -518,7 +516,6 @@ async def generate_naryad_text(return_data=False):
             bus_index += 1
 
             original_bus = row["bus"]
-
             allowed_lines = get_allowed_lines_for_bus(original_bus)
             if line not in allowed_lines:
                 continue
@@ -529,6 +526,7 @@ async def generate_naryad_text(return_data=False):
 
             first, second = get_week_shift(d1, d2)
 
+            # Замяна на счупен автобус
             if original_bus in broken_set and original_bus in assigned_map:
                 bus = assigned_map[original_bus]
             elif original_bus in broken_set and reserve_pool:
@@ -542,6 +540,7 @@ async def generate_naryad_text(return_data=False):
             by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
             assigned += 1
 
+    # ---------------- ГЕНЕРИРАНЕ НА ТЕКСТ ----------------
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
     text += f"{'Линия':<6} | {'Кола':<4} | {'ПС':<6} | {'Водач1':<12} | {'Водач2':<12}\n"
     text += "-" * 75 + "\n"
@@ -553,12 +552,15 @@ async def generate_naryad_text(return_data=False):
 
     text += "```"
 
+    # ---------------- РЕЗЕРВИ ----------------
     text += "\nРЕЗЕРВИ:\n"
     text += ", ".join(map(str, sorted(reserve_list))) if reserve_list else "няма"
 
+    # ---------------- БОЛНИЧНИ ----------------
     text += "\n\nБОЛНИЧНИ:\n"
     text += ", ".join(map(str, sorted(sick_set))) if sick_set else "няма"
 
+    # ---------------- В РЕМОНТ ----------------
     text += "\n\nВ РЕМОНТ:\n"
     text += ", ".join(map(str, sorted(broken_set))) if broken_set else "няма"
 
@@ -574,6 +576,7 @@ async def generate_naryad_text(return_data=False):
                 await channel.send(f"```{sheet}```")
 
     return text
+
 
 # ---------------- START ----------------
 
