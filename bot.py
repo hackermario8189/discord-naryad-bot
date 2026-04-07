@@ -502,22 +502,23 @@ async def generate_naryad_text(return_data=False):
             reserve_pool.remove(used_reserve)
 
    # разделяме автобусите по групи
-buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
-buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
-random.shuffle(buses_1xxx)
-random.shuffle(buses_2xxx)
+    # разделяме автобусите по групи
+    buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
+    buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
+    random.shuffle(buses_1xxx)
+    random.shuffle(buses_2xxx)
 
-# комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
-buses = buses_1xxx + buses_2xxx
+    # комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
+    buses = buses_1xxx + buses_2xxx
 
-by_line = {}
-bus_index = 0
-available_lines = list(line_limits.keys())
-random.shuffle(available_lines)
+    by_line = {}
+    bus_index = 0
+    available_lines = list(line_limits.keys())
+    random.shuffle(available_lines)
 
-for line in available_lines:
-    if bus_index >= len(buses):
-        break
+    for line in available_lines:
+        if bus_index >= len(buses):
+            break
 
         limit = line_limits[line]
         assigned = 0
@@ -545,6 +546,7 @@ for line in available_lines:
 
             f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
             f2 = "-"
+
             if second:
                 f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
 
