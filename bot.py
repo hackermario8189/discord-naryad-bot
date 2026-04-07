@@ -40,7 +40,11 @@ BASE_LINE_LIMITS = {
     1: 1,
     5: 1,
     67: 1,
-    28: 2
+    107: 2,
+    28: 2,
+    111: 4,
+    108: 2,
+    260: 2
 }
 LINES_INFO = {
     1: ("Гео Милев", "Кокалянско ханче"),
@@ -54,8 +58,22 @@ LINES_INFO = {
     68: ("Зоопарка", "Симеоново"),
     72: ("Хотел Плиска", "ж.к. Западен парк"),
     98: ("Зоопарка", "Железница"),
+    107: ("Кв. Карпузица", "Боянска Църква"),
+    108: ("Хюндай България", "Ж.К. Люлин 5"),
+    111: ("Ж.К..Младост1", "Ж.К. Люлин 1,2"),
     150: ("ж.к. Обеля 1", "Плодохранилище"),
+    260: ("Ж.К. Красно Село", "Кв. Горна Баня"),
+}  
+
+LINE_GROUPS = {
+    1: [64, 107, 108, 111, 260],
+    2: [1, 3, 5, 26, 28, 68, 72, 98, 150],
+    7: [31]
 }
+
+def get_allowed_lines_for_bus(bus):
+    first_digit = int(str(bus)[0])
+    return LINE_GROUPS.get(first_digit, [])
 
 def get_line_limits_for_date(date):
     limits = BASE_LINE_LIMITS.copy()
@@ -124,53 +142,53 @@ def generate_trip_sheet(line, car, bus, driver1, driver2):
 
     start, end = LINES_INFO.get(line, ("???", "???"))
 
-    if car <= 4:
-        shifts = [
-            ("04:30", "12:30"),
-            ("04:45", "12:45"),
-            ("05:00", "13:00"),
-            ("05:15", "13:15")
-        ]
-        shift_name = "1-ва смяна"
-    else:
-        shifts = [
-            ("12:45", "21:30"),
-            ("13:00", "21:45"),
-            ("13:15", "22:00"),
-            ("13:30", "22:15")
-        ]
-        shift_name = "2-ра смяна"
+    shifts_1 = [
+        ("04:30", "12:30"),
+        ("04:45", "12:45"),
+        ("05:00", "13:00"),
+        ("05:15", "13:15")
+    ]
+
+    shifts_2 = [
+        ("12:45", "21:30"),
+        ("13:00", "21:45"),
+        ("13:15", "22:00"),
+        ("13:30", "22:15")
+    ]
 
     idx = (car - 1) % 4
-    start_time, end_time = shifts[idx]
 
-    t = datetime.strptime(start_time, "%H:%M")
-    end_dt = datetime.strptime(end_time, "%H:%M")
+    def build_shift(name, start_time, end_time):
+        t = datetime.strptime(start_time, "%H:%M")
+        end_dt = datetime.strptime(end_time, "%H:%M")
 
-    trips = []
+        trips = []
+        while t < end_dt:
+            dep = t
+            arr = t + timedelta(minutes=30)
+            trips.append((dep.strftime("%H:%M"), arr.strftime("%H:%M")))
+            t += timedelta(minutes=60)
 
-    while t < end_dt:
-        dep = t
-        arr = t + timedelta(minutes=30)
-        trips.append((dep.strftime("%H:%M"), arr.strftime("%H:%M")))
-        t += timedelta(minutes=60)
+        text = f"\n{name}\n"
+        text += f"{start:<20} | ЧАС | {end}\n"
+        text += "-" * 45 + "\n"
+
+        for d, a in trips:
+            text += f"{start:<20} | {d} | {end} {a}\n"
+
+        return text
 
     text = f"📋 ПЪТЕН ЛИСТ\n"
     text += f"Линия: {line}\n"
     text += f"Кола: {car}\n"
     text += f"ПС: {bus}\n"
-    text += f"{shift_name}\n"
     text += f"Водач1: {driver1}\n"
-    text += f"Водач2: {driver2}\n\n"
+    text += f"Водач2: {driver2}\n"
 
-    text += f"{start:<20} | ЧАС | {end}\n"
-    text += "-" * 45 + "\n"
-
-    for d, a in trips:
-        text += f"{start:<20} | {d} | {end} {a}\n"
+    text += build_shift("1-ва смяна", *shifts_1[idx])
+    text += build_shift("2-ра смяна", *shifts_2[idx])
 
     return text
-
 
 # ---------------- SEND TRIP SHEETS ----------------
 
@@ -498,28 +516,34 @@ async def generate_naryad_text(return_data=False):
 
         while assigned < limit and bus_index < len(buses):
 
-            row = buses[bus_index]
-            bus_index += 1
+    row = buses[bus_index]
+    bus_index += 1
 
-            original_bus = row["bus"]
-            bus = original_bus
-            d1 = row["driver1"]
-            d2 = row["driver2"]
+    original_bus = row["bus"]
 
-            first, second = get_week_shift(d1, d2)
+    # 🔥 ФИЛТЪР ПО ГРУПА
+    allowed_lines = get_allowed_lines_for_bus(original_bus)
+    if line not in allowed_lines:
+        continue
 
-            if original_bus in broken_set and original_bus in assigned_map:
-                bus = assigned_map[original_bus]
-            elif original_bus in broken_set and reserve_pool:
-                bus = reserve_pool.pop(0)
+    bus = original_bus
+    d1 = row["driver1"]
+    d2 = row["driver2"]
 
-            f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-            f2 = "-"
-            if second:
-                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+    first, second = get_week_shift(d1, d2)
 
-            by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
-            assigned += 1
+    if original_bus in broken_set and original_bus in assigned_map:
+        bus = assigned_map[original_bus]
+    elif original_bus in broken_set and reserve_pool:
+        bus = reserve_pool.pop(0)
+
+    f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
+    f2 = "-"
+    if second:
+        f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+
+    by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
+    assigned += 1
 
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
     text += f"{'Линия':<6} | {'Кола':<4} | {'ПС':<6} | {'Водач1':<12} | {'Водач2':<12}\n"
