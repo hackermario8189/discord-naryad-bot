@@ -420,41 +420,6 @@ async def fix(interaction: discord.Interaction, bus: int):
     await interaction.response.send_message("Поправен.")
 
 
-# ---------------- CHANGETIME FOR TITULAR ----------------
-
-@tree.command(
-    name="changetimefortitular",
-    description="Промени смяната на титуляр (1 или 2)",
-    guild=discord.Object(id=GUILD_ID)
-)
-async def changetimefortitular(interaction: discord.Interaction, driver: int, shift: int):
-    """
-    shift: 1 за първа смяна, 2 за втора смяна
-    """
-    if interaction.user.id != OWNER_ID:
-        await interaction.response.send_message("Нямаш право.", ephemeral=True)
-        return
-
-    if shift not in [1, 2]:
-        await interaction.response.send_message("Смяната трябва да е 1 или 2.", ephemeral=True)
-        return
-
-    async with pool.acquire() as conn:
-        # Взимаме всички автобуси, където шофьорът е титуляр
-        rows = await conn.fetch("SELECT * FROM buses WHERE driver1=$1 OR driver2=$1", driver)
-
-    if not rows:
-        await interaction.response.send_message(f"{driver} не е титуляр никъде.", ephemeral=True)
-        return
-
-    # Записваме желаната смяна във глобален dict или база данни
-    if not hasattr(bot, "forced_shifts"):
-        bot.forced_shifts = {}
-
-    bot.forced_shifts[driver] = shift
-    await interaction.response.send_message(f"Шофьор {driver} е фиксиран на смяна {shift}.")
-
-
 # ---------------- NARYAD ----------------
 
 @tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
@@ -528,66 +493,65 @@ async def generate_naryad_text(return_data=False):
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
+
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
+
     for used_reserve in assigned_map.values():
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
+   # разделяме автобусите по групи
     # разделяме автобусите по групи
-    group_1_buses = [b for b in buses if 1000 <= b['bus'] <= 1999]
-    group_2_buses = [b for b in buses if 2000 <= b['bus'] <= 2999]
-    random.shuffle(group_1_buses)
-    random.shuffle(group_2_buses)
+    buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
+    buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
+    random.shuffle(buses_1xxx)
+    random.shuffle(buses_2xxx)
+
+    # комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
+    buses = buses_1xxx + buses_2xxx
 
     by_line = {}
+    bus_index = 0
+    available_lines = list(line_limits.keys())
+    random.shuffle(available_lines)
 
-    # функция за разпределяне на автобусите по линия
-    def assign_group_to_lines(bus_group):
-        nonlocal by_line
-        bus_index = 0
-        for line in sorted(line_limits.keys()):
-            limit = line_limits[line]
-            assigned = 0
-            while assigned < limit and bus_index < len(bus_group):
-                row = bus_group[bus_index]
-                bus_index += 1
+    for line in available_lines:
+        if bus_index >= len(buses):
+            break
 
-                bus_num = row["bus"]
-                if line not in get_allowed_lines_for_bus(bus_num):
-                    continue
+        limit = line_limits[line]
+        assigned = 0
 
-                bus = bus_num
-                d1 = row["driver1"]
-                d2 = row["driver2"]
+        while assigned < limit and bus_index < len(buses):
+            row = buses[bus_index]
+            bus_index += 1
 
-                # смяна по седмица
-                first, second = get_week_shift(d1, d2)
+            original_bus = row["bus"]
+            allowed_lines = get_allowed_lines_for_bus(original_bus)
+            if line not in allowed_lines:
+                continue
 
-                # смяна по фиксирана команда
-                if hasattr(bot, "forced_shifts"):
-                    if d1 in bot.forced_shifts:
-                        first = d1 if bot.forced_shifts[d1] == 1 else None
-                        second = d2 if bot.forced_shifts[d1] == 2 else None
-                    if d2 in bot.forced_shifts:
-                        second = d2 if bot.forced_shifts[d2] == 2 else None
-                        first = d1 if bot.forced_shifts[d2] == 1 else None
+            bus = original_bus
+            d1 = row["driver1"]
+            d2 = row["driver2"]
 
-                # Замяна на счупен автобус
-                if bus_num in broken_set and bus_num in assigned_map:
-                    bus = assigned_map[bus_num]
-                elif bus_num in broken_set and reserve_pool:
-                    bus = reserve_pool.pop(0)
+            first, second = get_week_shift(d1, d2)
 
-                f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first) if first else "-"
-                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second) if second else "-"
+            # Замяна на счупен автобус
+            if original_bus in broken_set and original_bus in assigned_map:
+                bus = assigned_map[original_bus]
+            elif original_bus in broken_set and reserve_pool:
+                bus = reserve_pool.pop(0)
 
-                by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
-                assigned += 1
+            f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
+            f2 = "-"
 
-    # разпределяме всяка група по нейните линии
-    assign_group_to_lines(group_1_buses)
-    assign_group_to_lines(group_2_buses)
+            if second:
+                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+
+            by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
+            assigned += 1
 
     # ---------------- ГЕНЕРИРАНЕ НА ТЕКСТ ----------------
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
@@ -625,6 +589,7 @@ async def generate_naryad_text(return_data=False):
                 await channel.send(f"```{sheet}```")
 
     return text
+
 
 # ---------------- START ----------------
 
