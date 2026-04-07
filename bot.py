@@ -514,7 +514,7 @@ async def generate_naryad_text(return_data=False):
         limit = line_limits[line]
         assigned = 0
 
-        while assigned < limit and bus_index < len(buses):
+while assigned < limit and bus_index < len(buses):
 
     row = buses[bus_index]
     bus_index += 1
