@@ -72,12 +72,12 @@ LINE_GROUPS = {
 }
 
 def get_allowed_lines_for_bus(bus):
-    # върни всички линии, които имат този автобус в групата
-    allowed = []
-    for group_lines in LINE_GROUPS.values():
-        if bus in group_lines:
-            allowed.extend(group_lines)
-    return allowed
+    if 1000 <= bus <= 1999:
+        return [64, 107, 108, 111, 260]  # линии за автобуси 1000–1999
+    elif 2000 <= bus <= 2999:
+        return [1, 3, 5, 26, 28, 68, 72, 98, 150]  # линии за автобуси 2000–2999
+    else:
+        return []  # ако автобусът не е в тези диапазони, няма линии
 
 def get_line_limits_for_date(date):
     limits = BASE_LINE_LIMITS.copy()
