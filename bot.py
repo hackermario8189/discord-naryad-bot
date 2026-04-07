@@ -510,7 +510,7 @@ async def auto_naryad():
 
 # ---------------- ГЕНЕРАТОР ----------------
 
-aasync def generate_naryad_text(return_data=False):
+async def generate_naryad_text(return_data=False):
     tomorrow = datetime.now() + timedelta(days=1)
     date_str = tomorrow.strftime("%d.%m.%Y")
     line_limits = get_line_limits_for_date(tomorrow)
@@ -632,7 +632,7 @@ aasync def generate_naryad_text(return_data=False):
 
     return text
 
-    
+
 # ---------------- START ----------------
 
 bot.run(TOKEN)
