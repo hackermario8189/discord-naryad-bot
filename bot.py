@@ -513,11 +513,8 @@ async def generate_naryad_text(return_data=False):
 
 by_line = {}
 
-# за всяка линия, избери валидни автобуси
 for line, limit in line_limits.items():
     assigned = 0
-
-    # филтрирай автобусите, които могат да карат тази линия
     valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
     random.shuffle(valid_buses)
 
@@ -525,15 +522,12 @@ for line, limit in line_limits.items():
         if assigned >= limit:
             break
 
-        # взимаме данните за автобуса
         original_bus = row["bus"]
         d1 = row["driver1"]
         d2 = row["driver2"]
 
-        # проверка за смяна
         first, second = get_week_shift(d1, d2)
 
-        # Замяна на счупен автобус
         if original_bus in broken_set and original_bus in assigned_map:
             bus = assigned_map[original_bus]
         elif original_bus in broken_set and reserve_pool:
@@ -541,14 +535,12 @@ for line, limit in line_limits.items():
         else:
             bus = original_bus
 
-        # бележим болни
         f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
         f2 = f"{second} (БОЛНИЧЕН)" if second and second in sick_set else (str(second) if second else "-")
 
-        # добавяме към линията
         by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
         assigned += 1
-        
+
             # Замяна на счупен автобус
             if original_bus in broken_set and original_bus in assigned_map:
                 bus = assigned_map[original_bus]
