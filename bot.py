@@ -524,18 +524,15 @@ async def generate_naryad_text(return_data=False):
         assigned = 0
 
         while assigned < limit and bus_index < len(buses):
-            row = buses[bus_index]
-            bus_index += 1
+           row = buses[bus_index]
+                original_bus = row["bus"]
+                allowed_lines = get_allowed_lines_for_bus(original_bus)
 
-            original_bus = row["bus"]
-            allowed_lines = get_allowed_lines_for_bus(original_bus)
-            if line not in allowed_lines:
-                continue
+                if line not in allowed_lines:
+                    bus_index += 1
+                    continue
 
-            bus = original_bus
-            d1 = row["driver1"]
-            d2 = row["driver2"]
-
+                     bus_index += 1
             first, second = get_week_shift(d1, d2)
 
             # Замяна на счупен автобус
