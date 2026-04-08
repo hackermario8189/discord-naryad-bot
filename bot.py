@@ -496,12 +496,10 @@ async def generate_naryad_text(return_data=False):
 
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
-
     for used_reserve in assigned_map.values():
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
-   # разделяме автобусите по групи
     # разделяме автобусите по групи
     buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
     buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
@@ -511,47 +509,34 @@ async def generate_naryad_text(return_data=False):
     # комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
     buses = buses_1xxx + buses_2xxx
 
-by_line = {}
+    by_line = {}
 
-for line, limit in line_limits.items():
-    assigned = 0
-    valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
-    random.shuffle(valid_buses)
+    for line, limit in line_limits.items():
+        assigned = 0
+        valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
+        random.shuffle(valid_buses)
 
-    for row in valid_buses:
-        if assigned >= limit:
-            break
+        for row in valid_buses:
+            if assigned >= limit:
+                break
 
-        original_bus = row["bus"]
-        d1 = row["driver1"]
-        d2 = row["driver2"]
+            original_bus = row["bus"]
+            d1 = row["driver1"]
+            d2 = row["driver2"]
 
-        first, second = get_week_shift(d1, d2)
-
-        if original_bus in broken_set and original_bus in assigned_map:
-            bus = assigned_map[original_bus]
-        elif original_bus in broken_set and reserve_pool:
-            bus = reserve_pool.pop(0)
-        else:
-            bus = original_bus
-
-        f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-        f2 = f"{second} (БОЛНИЧЕН)" if second and second in sick_set else (str(second) if second else "-")
-
-        by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
-        assigned += 1
+            first, second = get_week_shift(d1, d2)
 
             # Замяна на счупен автобус
             if original_bus in broken_set and original_bus in assigned_map:
                 bus = assigned_map[original_bus]
             elif original_bus in broken_set and reserve_pool:
                 bus = reserve_pool.pop(0)
+            else:
+                bus = original_bus
 
+            # бележим болни
             f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-            f2 = "-"
-
-            if second:
-                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+            f2 = f"{second} (БОЛНИЧЕН)" if second and second in sick_set else (str(second) if second else "-")
 
             by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
             assigned += 1
@@ -592,8 +577,3 @@ for line, limit in line_limits.items():
                 await channel.send(f"```{sheet}```")
 
     return text
-
-
-# ---------------- START ----------------
-
-bot.run(TOKEN)
