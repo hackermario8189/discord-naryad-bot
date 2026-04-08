@@ -537,7 +537,7 @@ async def generate_naryad_text(return_data=False):
             d1 = row["driver1"]
             d2 = row["driver2"]
 
-        first, second = get_week_shift(d1, d2)
+            first, second = get_week_shift(d1, d2)
 
             # Замяна на счупен автобус
             if original_bus in broken_set and original_bus in assigned_map:
