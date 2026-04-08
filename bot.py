@@ -511,34 +511,44 @@ async def generate_naryad_text(return_data=False):
     # комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
     buses = buses_1xxx + buses_2xxx
 
-    by_line = {}
-    bus_index = 0
-    available_lines = list(line_limits.keys())
-    random.shuffle(available_lines)
+by_line = {}
 
-    for line in available_lines:
-        if bus_index >= len(buses):
+# за всяка линия, избери валидни автобуси
+for line, limit in line_limits.items():
+    assigned = 0
+
+    # филтрирай автобусите, които могат да карат тази линия
+    valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
+    random.shuffle(valid_buses)
+
+    for row in valid_buses:
+        if assigned >= limit:
             break
 
-        limit = line_limits[line]
-        assigned = 0
+        # взимаме данните за автобуса
+        original_bus = row["bus"]
+        d1 = row["driver1"]
+        d2 = row["driver2"]
 
-        while assigned < limit and bus_index < len(buses):
-            row = buses[bus_index]
-            bus_index += 1
+        # проверка за смяна
+        first, second = get_week_shift(d1, d2)
 
-            original_bus = row["bus"]
-            allowed_lines = get_allowed_lines_for_bus(original_bus)
-
-            if line not in allowed_lines:
-                continue
-
+        # Замяна на счупен автобус
+        if original_bus in broken_set and original_bus in assigned_map:
+            bus = assigned_map[original_bus]
+        elif original_bus in broken_set and reserve_pool:
+            bus = reserve_pool.pop(0)
+        else:
             bus = original_bus
-            d1 = row["driver1"]
-            d2 = row["driver2"]
 
-            first, second = get_week_shift(d1, d2)
+        # бележим болни
+        f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
+        f2 = f"{second} (БОЛНИЧЕН)" if second and second in sick_set else (str(second) if second else "-")
 
+        # добавяме към линията
+        by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
+        assigned += 1
+        
             # Замяна на счупен автобус
             if original_bus in broken_set and original_bus in assigned_map:
                 bus = assigned_map[original_bus]
