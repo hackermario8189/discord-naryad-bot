@@ -385,6 +385,31 @@ async def removereserve(interaction: discord.Interaction, bus: int):
 
     await interaction.response.send_message("Махнат резерв.")
 
+    
+    #---------------------------------------
+
+@tree.command(
+    name="changetimefortitular",
+    description="Фиксирай шофьор на смяна (1 или 2)",
+    guild=discord.Object(id=GUILD_ID)
+)
+async def changetimefortitular(interaction: discord.Interaction, driver: int, shift: int):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    if shift not in [1, 2]:
+        await interaction.response.send_message("Само 1 или 2.", ephemeral=True)
+        return
+
+    if not hasattr(bot, "forced_shifts"):
+        bot.forced_shifts = {}
+
+    bot.forced_shifts[driver] = shift
+
+    await interaction.response.send_message(f"{driver} е фиксиран на смяна {shift}")
+
 
 # ---------------- BROKEN ----------------
 
@@ -532,11 +557,33 @@ async def generate_naryad_text(return_data=False):
             if line not in allowed_lines:
                 continue
 
-            bus = original_bus
+             bus = original_bus
             d1 = row["driver1"]
             d2 = row["driver2"]
+            
+first, second = get_week_shift(d1, d2)
 
-            first, second = get_week_shift(d1, d2)
+# forced shifts
+if hasattr(bot, "forced_shifts"):
+    if d1 in bot.forced_shifts:
+        if bot.forced_shifts[d1] == 1:
+            first = d1
+            second = None
+        else:
+            second = d1
+            first = None
+
+    if d2 in bot.forced_shifts:
+        if bot.forced_shifts[d2] == 2:
+            second = d2
+            first = None
+        else:
+            first = d2
+            second = None
+            
+    # ако никой не е forced → нормална ротация
+    if first is None and second is None:
+        first, second = get_week_shift(d1, d2)
 
             # Замяна на счупен автобус
             if original_bus in broken_set and original_bus in assigned_map:
@@ -544,11 +591,9 @@ async def generate_naryad_text(return_data=False):
             elif original_bus in broken_set and reserve_pool:
                 bus = reserve_pool.pop(0)
 
-            f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-            f2 = "-"
-
-            if second:
-                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+            # болнични
+            f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first) if first else "-"
+            f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second) if second else "-"
 
             by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
             assigned += 1
