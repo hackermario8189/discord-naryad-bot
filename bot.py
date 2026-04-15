@@ -501,25 +501,20 @@ async def generate_naryad_text(return_data=False):
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
-   # разделяме автобусите по групи
     # разделяме автобусите по групи
     buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
     buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
+
     random.shuffle(buses_1xxx)
     random.shuffle(buses_2xxx)
 
-    # комбинираме ги в реда, който искаш (тук първо 1xxx, после 2xxx)
     buses = buses_1xxx + buses_2xxx
 
     by_line = {}
-    bus_index = 0
     available_lines = list(line_limits.keys())
     random.shuffle(available_lines)
 
     for line in available_lines:
-        if bus_index >= len(buses):
-            break
-
         limit = line_limits[line]
         assigned = 0
 
@@ -553,6 +548,7 @@ async def generate_naryad_text(return_data=False):
             assigned += 1
 
     # ---------------- ГЕНЕРИРАНЕ НА ТЕКСТ ----------------
+
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
     text += f"{'Линия':<6} | {'Кола':<4} | {'ПС':<6} | {'Водач1':<12} | {'Водач2':<12}\n"
     text += "-" * 75 + "\n"
@@ -579,17 +575,4 @@ async def generate_naryad_text(return_data=False):
     if return_data:
         return text, by_line
 
-    # ---------------- ПЪТНИ ЛИСТОВЕ ----------------
-    channel = bot.get_channel(PTEN_CHANNEL_ID)
-    if channel:
-        for line in by_line:
-            for car, bus, f1, f2 in by_line[line]:
-                sheet = generate_trip_sheet(line, car, bus, f1, f2)
-                await channel.send(f"```{sheet}```")
-
     return text
-
-
-# ---------------- START ----------------
-
-bot.run(TOKEN)
