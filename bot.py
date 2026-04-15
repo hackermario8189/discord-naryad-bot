@@ -473,7 +473,7 @@ async def auto_naryad():
         await asyncio.sleep(60)
 
 
-# ---------------- ГЕНЕРАТОР ----------------
+# --------------- ГЕНЕРАТОР ----------------
 
 async def generate_naryad_text(return_data=False):
     tomorrow = datetime.now() + timedelta(days=1)
