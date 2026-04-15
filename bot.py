@@ -66,8 +66,8 @@ LINES_INFO = {
 }  
 
 LINE_GROUPS = {
-    1: [64, 107, 108, 111, 260],
-    2: [1, 3, 5, 26, 28, 68, 72, 98, 150],
+    1: [64, 150, 108, 111, 260],
+    2: [1, 3, 5, 26, 28, 68, 72, 98, 107],
     7: [31]
 }
 
@@ -496,10 +496,12 @@ async def generate_naryad_text(return_data=False):
 
     reserve_list = [r["bus"] for r in reserves]
     reserve_pool = reserve_list.copy()
+
     for used_reserve in assigned_map.values():
         if used_reserve in reserve_pool:
             reserve_pool.remove(used_reserve)
 
+   # разделяме автобусите по групи
     # разделяме автобусите по групи
     buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
     buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
@@ -510,17 +512,26 @@ async def generate_naryad_text(return_data=False):
     buses = buses_1xxx + buses_2xxx
 
     by_line = {}
+    bus_index = 0
+    available_lines = list(line_limits.keys())
+    random.shuffle(available_lines)
 
-    for line, limit in line_limits.items():
+    for line in available_lines:
+        if bus_index >= len(buses):
+            break
+
+        limit = line_limits[line]
         assigned = 0
-        valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
-        random.shuffle(valid_buses)
 
-        for row in valid_buses:
-            if assigned >= limit:
-                break
+        valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
+
+        while assigned < limit and valid_buses:
+            row = valid_buses.pop(0)
+            buses.remove(row)
 
             original_bus = row["bus"]
+            bus = original_bus
+
             d1 = row["driver1"]
             d2 = row["driver2"]
 
@@ -531,12 +542,12 @@ async def generate_naryad_text(return_data=False):
                 bus = assigned_map[original_bus]
             elif original_bus in broken_set and reserve_pool:
                 bus = reserve_pool.pop(0)
-            else:
-                bus = original_bus
 
-            # бележим болни
             f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
-            f2 = f"{second} (БОЛНИЧЕН)" if second and second in sick_set else (str(second) if second else "-")
+            f2 = "-"
+
+            if second:
+                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
 
             by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
             assigned += 1
@@ -577,3 +588,8 @@ async def generate_naryad_text(return_data=False):
                 await channel.send(f"```{sheet}```")
 
     return text
+
+
+# ---------------- START ----------------
+
+bot.run(TOKEN)
