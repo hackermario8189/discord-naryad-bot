@@ -485,25 +485,27 @@ async def generate_naryad_text(return_data=False):
         reserves = await conn.fetch("SELECT bus FROM reserves")
         broken = await conn.fetch("SELECT bus FROM broken")
         sick = await conn.fetch("SELECT driver FROM sick")
-        assigned_reserves = await conn.fetch("SELECT broken_bus, reserve_bus FROM assigned_reserves")
+        assigned_reserves = await conn.fetch(
+            "SELECT broken_bus, reserve_bus FROM assigned_reserves"
+        )
 
     if not buses:
-        return "Няма записани автобуси." if not return_data else ("Няма записани автобуси.", {})
+        return (
+            "Няма записани автобуси."
+            if not return_data
+            else ("Няма записани автобуси.", {})
+        )
 
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
 
     reserve_list = [r["bus"] for r in reserves]
-    reserve_pool = reserve_list.copy()
+    reserve_pool = [b for b in reserve_list if b not in assigned_map.values()]
 
-    for used_reserve in assigned_map.values():
-        if used_reserve in reserve_pool:
-            reserve_pool.remove(used_reserve)
-
-    # разделяме автобусите по групи
-    buses_1xxx = [b for b in buses if 1000 <= b['bus'] <= 1999]
-    buses_2xxx = [b for b in buses if 2000 <= b['bus'] <= 2999]
+    # --- групиране на автобуси ---
+    buses_1xxx = [b for b in buses if 1000 <= b["bus"] <= 1999]
+    buses_2xxx = [b for b in buses if 2000 <= b["bus"] <= 2999]
 
     random.shuffle(buses_1xxx)
     random.shuffle(buses_2xxx)
@@ -518,7 +520,9 @@ async def generate_naryad_text(return_data=False):
         limit = line_limits[line]
         assigned = 0
 
-        valid_buses = [b for b in buses if line in get_allowed_lines_for_bus(b["bus"])]
+        valid_buses = [
+            b for b in buses if line in get_allowed_lines_for_bus(b["bus"])
+        ]
 
         while assigned < limit and valid_buses:
             row = valid_buses.pop(0)
@@ -532,11 +536,12 @@ async def generate_naryad_text(return_data=False):
 
             first, second = get_week_shift(d1, d2)
 
-            # Замяна на счупен автобус
-            if original_bus in broken_set and original_bus in assigned_map:
-                bus = assigned_map[original_bus]
-            elif original_bus in broken_set and reserve_pool:
-                bus = reserve_pool.pop(0)
+            # --- счупен автобус ---
+            if original_bus in broken_set:
+                if original_bus in assigned_map:
+                    bus = assigned_map[original_bus]
+                elif reserve_pool:
+                    bus = reserve_pool.pop(0)
 
             f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
             f2 = "-"
@@ -544,10 +549,13 @@ async def generate_naryad_text(return_data=False):
             if second:
                 f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
 
-            by_line.setdefault(line, []).append((assigned + 1, bus, f1, f2))
+            by_line.setdefault(line, []).append(
+                (assigned + 1, bus, f1, f2)
+            )
+
             assigned += 1
 
-    # ---------------- ГЕНЕРИРАНЕ НА ТЕКСТ ----------------
+    # ---------------- ТЕКСТ ----------------
 
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
     text += f"{'Линия':<6} | {'Кола':<4} | {'ПС':<6} | {'Водач1':<12} | {'Водач2':<12}\n"
@@ -560,15 +568,15 @@ async def generate_naryad_text(return_data=False):
 
     text += "```"
 
-    # ---------------- РЕЗЕРВИ ----------------
+    # --- резерви ---
     text += "\nРЕЗЕРВИ:\n"
     text += ", ".join(map(str, sorted(reserve_list))) if reserve_list else "няма"
 
-    # ---------------- БОЛНИЧНИ ----------------
+    # --- болнични ---
     text += "\n\nБОЛНИЧНИ:\n"
     text += ", ".join(map(str, sorted(sick_set))) if sick_set else "няма"
 
-    # ---------------- В РЕМОНТ ----------------
+    # --- ремонт ---
     text += "\n\nВ РЕМОНТ:\n"
     text += ", ".join(map(str, sorted(broken_set))) if broken_set else "няма"
 
