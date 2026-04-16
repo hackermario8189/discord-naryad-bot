@@ -602,3 +602,5 @@ async def generate_naryad_text(return_data=False):
         return text, by_line
 
     return text
+
+bot.run(TOKEN)
