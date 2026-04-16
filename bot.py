@@ -473,11 +473,15 @@ async def auto_naryad():
         await asyncio.sleep(60)
 
 
-# --------------- ГЕНЕРАТОР ----------------
+# ---------------- ГЕНЕРАТОР ----------------
 
 async def generate_naryad_text(return_data=False):
     tomorrow = datetime.now() + timedelta(days=1)
     date_str = tomorrow.strftime("%d.%m.%Y")
+
+    # стабилен random
+    random.seed(tomorrow.toordinal())
+
     line_limits = get_line_limits_for_date(tomorrow)
 
     async with pool.acquire() as conn:
@@ -501,7 +505,12 @@ async def generate_naryad_text(return_data=False):
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
 
     reserve_list = [r["bus"] for r in reserves]
-    reserve_pool = [b for b in reserve_list if b not in assigned_map.values()]
+
+    # FIX: махаме счупени резерви
+    reserve_pool = [
+        b for b in reserve_list
+        if b not in assigned_map.values() and b not in broken_set
+    ]
 
     # --- групиране на автобуси ---
     buses_1xxx = [b for b in buses if 1000 <= b["bus"] <= 1999]
@@ -520,12 +529,17 @@ async def generate_naryad_text(return_data=False):
         limit = line_limits[line]
         assigned = 0
 
-        valid_buses = [
-            b for b in buses if line in get_allowed_lines_for_bus(b["bus"])
-        ]
+        # FIX: филтрираме директно от buses всеки път
+        while assigned < limit:
+            valid_buses = [
+                b for b in buses
+                if line in get_allowed_lines_for_bus(b["bus"])
+            ]
 
-        while assigned < limit and valid_buses:
-            row = valid_buses.pop(0)
+            if not valid_buses:
+                break
+
+            row = valid_buses[0]
             buses.remove(row)
 
             original_bus = row["bus"]
@@ -542,7 +556,11 @@ async def generate_naryad_text(return_data=False):
                     bus = assigned_map[original_bus]
                 elif reserve_pool:
                     bus = reserve_pool.pop(0)
+                else:
+                    # няма резерв – пропускаме
+                    continue
 
+            # маркиране (само визуално)
             f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
             f2 = "-"
 
