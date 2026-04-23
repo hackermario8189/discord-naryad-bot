@@ -77,8 +77,8 @@ LINE_GROUPS = {
     2: [181, 183, 185, 26, 28, 68, 72, 98, 107],
     7: [31]
 }
-
-LINE_BUS_PREFIX_PREFERENCES = {
+  #фИЛТЪР ЗА БУСОВЕТЕ
+LINE_BUS_PREFIX_PREFERENCES = { 
     26: [27, 20],
 }
 
@@ -114,7 +114,7 @@ def get_line_limits_for_date(date):
     return limits
 
 
-# ---------------- DATABASE ----------------
+# ---------------- DATABASE ---------------- НЕ СЕ ПИПА
 
 async def init_db():
     global pool
@@ -155,7 +155,7 @@ async def init_db():
         """)
 
 
-# ---------------- РОТАЦИЯ ----------------
+# ---------------- РОТАЦИЯ ---------------- НЯМА КАК ДА РАЗВАЛИ СКРИПТА!!! ДА НЕ СЕ ПИПА
 
 def get_week_shift(driver1, driver2):
     tomorrow = datetime.now() + timedelta(days=1)
