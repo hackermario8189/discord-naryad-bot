@@ -78,10 +78,6 @@ LINE_GROUPS = {
     7: [31]
 }
 
-LINE_BUS_PREFIX_PREFERENCES = {
-    26: [27, 20],
-}
-
 def get_allowed_lines_for_bus(bus):
     if 1000 <= bus <= 1999:
         return ["X9", 63, 64, 108, 111, 150, 260]  # линии за автобуси 1000–1999
@@ -89,22 +85,6 @@ def get_allowed_lines_for_bus(bus):
         return [1, 3, 5, 26, 28, 68, 72, 98, 107, 150]  # линии за автобуси 2000–2999
     else:
         return []  # ако автобусът не е в тези диапазони, няма линии
-
-def get_bus_prefix(bus):
-    return bus // 100
-
-def sort_buses_for_line(line, candidate_buses):
-    preferred_prefixes = LINE_BUS_PREFIX_PREFERENCES.get(line)
-
-    if not preferred_prefixes:
-        return candidate_buses
-
-    prefix_order = {prefix: index for index, prefix in enumerate(preferred_prefixes)}
-
-    return sorted(
-        candidate_buses,
-        key=lambda row: prefix_order.get(get_bus_prefix(row["bus"]), len(preferred_prefixes))
-    )
 
 def get_line_limits_for_date(date):
     limits = BASE_LINE_LIMITS.copy()
@@ -562,7 +542,6 @@ async def generate_naryad_text(return_data=False):
                 b for b in buses
                 if line in get_allowed_lines_for_bus(b["bus"])
             ]
-            valid_buses = sort_buses_for_line(line, valid_buses)
 
             if not valid_buses:
                 break
