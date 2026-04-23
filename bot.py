@@ -15,6 +15,7 @@ print("DB_URL_RAW:", DATABASE_URL)
 OWNER_ID = 985188925360443452
 GUILD_ID = 1456265813190512763
 CHANNEL_ID = 1473183167895830568
+REST_ROTATION_START = datetime(2026, 1, 1).date()
 PTEN_CHANNEL_ID = 1484651462721015838  # СМЕНИ С ТВОЯ КАНАЛ
 
 pool = None
@@ -112,6 +113,53 @@ def get_line_limits_for_date(date):
         limits[68] = 0
         limits[28] = 1
     return limits
+
+def get_rest_limit_for_date(date):
+    return 4 if date.weekday() >= 5 else 3
+
+def get_all_drivers(buses):
+    drivers = set()
+
+    for row in buses:
+        drivers.add(row["driver1"])
+
+        if row["driver2"] is not None:
+            drivers.add(row["driver2"])
+
+    return sorted(drivers)
+
+def get_rest_drivers_for_date(date, buses, sick_set):
+    all_drivers = [driver for driver in get_all_drivers(buses) if driver not in sick_set]
+
+    if not all_drivers:
+        return set()
+
+    current_date = REST_ROTATION_START
+    current_index = 0
+
+    while current_date < date:
+        remaining = len(all_drivers) - current_index
+        daily_limit = min(get_rest_limit_for_date(current_date), remaining)
+        current_index += daily_limit
+
+        if current_index >= len(all_drivers):
+            current_index = 0
+
+        current_date += timedelta(days=1)
+
+    remaining = len(all_drivers) - current_index
+    daily_limit = min(get_rest_limit_for_date(date), remaining)
+
+    return set(all_drivers[current_index:current_index + daily_limit])
+
+def format_driver_status(driver, sick_set, rest_set):
+    if driver in sick_set:
+        return f"{driver} (БОЛНИЧЕН)"
+
+    if driver in rest_set:
+        return f"{driver} (ПОЧИВКА)"
+
+    return str(driver)
 
 
 # ---------------- DATABASE ---------------- НЕ СЕ ПИПА
@@ -529,6 +577,7 @@ async def generate_naryad_text(return_data=False):
 
     broken_set = {r["bus"] for r in broken}
     sick_set = {r["driver"] for r in sick}
+    rest_set = get_rest_drivers_for_date(tomorrow.date(), buses, sick_set)
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
 
     reserve_list = [r["bus"] for r in reserves]
@@ -589,11 +638,11 @@ async def generate_naryad_text(return_data=False):
                     continue
 
             # маркиране (само визуално)
-            f1 = f"{first} (БОЛНИЧЕН)" if first in sick_set else str(first)
+            f1 = format_driver_status(first, sick_set, rest_set)
             f2 = "-"
 
             if second:
-                f2 = f"{second} (БОЛНИЧЕН)" if second in sick_set else str(second)
+                f2 = format_driver_status(second, sick_set, rest_set)
 
             by_line.setdefault(line, []).append(
                 (assigned + 1, bus, f1, f2)
@@ -621,6 +670,10 @@ async def generate_naryad_text(return_data=False):
     # --- болнични ---
     text += "\n\nБОЛНИЧНИ:\n"
     text += ", ".join(map(str, sorted(sick_set))) if sick_set else "няма"
+
+    # --- почивка ---
+    text += "\n\nПОЧИВКА:\n"
+    text += ", ".join(map(str, sorted(rest_set))) if rest_set else "няма"
 
     # --- ремонт ---
     text += "\n\nВ РЕМОНТ:\n"
