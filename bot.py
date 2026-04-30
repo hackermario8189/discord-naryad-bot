@@ -93,11 +93,15 @@ LINE_BUS_PREFIX_PREFERENCES = {
 }
 
 LINE_BUS_PREFIX_ONLY = {
-    280: [23]
+    280: [23],
+    83: [11],
+    78: [23]
 }
 
 BUS_PREFIX_LINE_ONLY = {
-    23: [280]
+    23: [280],
+    23: [78],
+    11: [83]
 }
 
 def get_allowed_lines_for_bus(bus):
