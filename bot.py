@@ -88,20 +88,21 @@ LINE_GROUPS = {
   #фИЛТЪР ЗА БУСОВЕТЕ
 LINE_BUS_PREFIX_PREFERENCES = { 
     26: [27, 20],
-    83: [16],
+    83: [16, 11],
     280: [23]
 }
 
 LINE_BUS_PREFIX_ONLY = {
     280: [23],
-    83: [11],
-    78: [23]
+    83: [11, 16],
+    78: [23],
+    310: [23]
 }
 
 BUS_PREFIX_LINE_ONLY = {
-    23: [280],
-    23: [78],
-    11: [83]
+    23: [280, 78, 310],
+    11: [83],
+    16: [83]
 }
 
 def get_allowed_lines_for_bus(bus):
