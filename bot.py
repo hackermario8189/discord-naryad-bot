@@ -89,9 +89,15 @@ LINE_GROUPS = {
 LINE_BUS_PREFIX_PREFERENCES = { 
     26: [27, 20],
     83: [16],
-    280: [23],
-    310: [23],
-    78: [23]
+    280: [23]
+}
+
+LINE_BUS_PREFIX_ONLY = {
+    280: [23]
+}
+
+BUS_PREFIX_LINE_ONLY = {
+    23: [280]
 }
 
 def get_allowed_lines_for_bus(bus):
@@ -104,6 +110,22 @@ def get_allowed_lines_for_bus(bus):
 
 def get_bus_prefix(bus):
     return bus // 100
+
+def is_bus_allowed_on_line(bus, line):
+    prefix = get_bus_prefix(bus)
+    prefix_only_lines = BUS_PREFIX_LINE_ONLY.get(prefix)
+
+    if prefix_only_lines is not None:
+        return line in prefix_only_lines
+
+    if line not in get_allowed_lines_for_bus(bus):
+        return False
+
+    line_only_prefixes = LINE_BUS_PREFIX_ONLY.get(line)
+    if line_only_prefixes is not None:
+        return prefix in line_only_prefixes
+
+    return True
 
 def sort_buses_for_line(line, candidate_buses):
     preferred_prefixes = LINE_BUS_PREFIX_PREFERENCES.get(line)
@@ -620,7 +642,7 @@ async def generate_naryad_text(return_data=False):
         while assigned < limit:
             valid_buses = [
                 b for b in buses
-                if line in get_allowed_lines_for_bus(b["bus"])
+                if is_bus_allowed_on_line(b["bus"], line)
             ]
             valid_buses = sort_buses_for_line(line, valid_buses)
 
@@ -640,13 +662,24 @@ async def generate_naryad_text(return_data=False):
 
             # --- счупен автобус ---
             if original_bus in broken_set:
-                if original_bus in assigned_map:
-                    bus = assigned_map[original_bus]
-                elif reserve_pool:
-                    bus = reserve_pool.pop(0)
+                assigned_reserve = assigned_map.get(original_bus)
+
+                if assigned_reserve and is_bus_allowed_on_line(assigned_reserve, line):
+                    bus = assigned_reserve
                 else:
-                    # няма резерв – пропускаме
-                    continue
+                    reserve_index = next(
+                        (
+                            index
+                            for index, reserve_bus in enumerate(reserve_pool)
+                            if is_bus_allowed_on_line(reserve_bus, line)
+                        ),
+                        None
+                    )
+
+                    if reserve_index is None:
+                        continue
+
+                    bus = reserve_pool.pop(reserve_index)
 
             # маркиране (само визуално)
             f1 = format_driver_status(first, sick_set, rest_set)
