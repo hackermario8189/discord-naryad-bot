@@ -241,6 +241,33 @@ async def init_db():
             );
         """)
 
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS ext_info (
+                bus BIGINT NOT NULL,
+                driver BIGINT NOT NULL,
+                naryad_date DATE NOT NULL DEFAULT CURRENT_DATE + INTERVAL '1 day',
+                note TEXT NOT NULL,
+                PRIMARY KEY (bus, driver, naryad_date)
+            );
+        """)
+
+        await conn.execute("""
+            ALTER TABLE ext_info
+            ADD COLUMN IF NOT EXISTS naryad_date DATE NOT NULL DEFAULT CURRENT_DATE + INTERVAL '1 day';
+        """)
+
+        await conn.execute("""
+            ALTER TABLE ext_info
+            DROP CONSTRAINT IF EXISTS ext_info_pkey;
+        """)
+
+        await conn.execute("""
+            ALTER TABLE ext_info
+            ADD PRIMARY KEY (bus, driver, naryad_date);
+        """)
+
+        await conn.execute("DELETE FROM ext_info WHERE naryad_date < CURRENT_DATE;")
+
 
 # ---------------- РОТАЦИЯ ---------------- НЯМА КАК ДА РАЗВАЛИ СКРИПТА!!! ДА НЕ СЕ ПИПА
 
@@ -316,7 +343,7 @@ async def send_trip_sheets(by_line):
         return
 
     for line in by_line:
-        for car, bus, f1, f2 in by_line[line]:
+        for car, bus, f1, f2, *_ in by_line[line]:
             sheet = generate_trip_sheet(line, car, bus, f1, f2)
             await channel.send(f"```{sheet}```")
 
@@ -534,6 +561,51 @@ async def fix(interaction: discord.Interaction, bus: int):
     await interaction.response.send_message("Поправен.")
 
 
+# ---------------- EXT INFO ----------------
+
+@tree.command(name="extinfo", description="Добави забележка към водач в наряда", guild=discord.Object(id=GUILD_ID))
+@app_commands.rename(bus="бус", driver="шофьор", note="забележка")
+async def extinfo(interaction: discord.Interaction, bus: int, driver: int, note: str):
+
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
+
+    note = note.strip()
+
+    if not note:
+        await interaction.response.send_message("Напиши текст за забележката.", ephemeral=True)
+        return
+
+    naryad_date = (datetime.now() + timedelta(days=1)).date()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT driver1, driver2 FROM buses WHERE bus=$1",
+            bus
+        )
+
+        if row is None:
+            await interaction.response.send_message(f"Бус {bus} не е намерен.", ephemeral=True)
+            return
+
+        if driver not in (row["driver1"], row["driver2"]):
+            await interaction.response.send_message(
+                f"Шофьор {driver} не е записан към бус {bus}.",
+                ephemeral=True
+            )
+            return
+
+        await conn.execute("""
+            INSERT INTO ext_info(bus, driver, naryad_date, note)
+            VALUES($1, $2, $3, $4)
+            ON CONFLICT (bus, driver, naryad_date)
+            DO UPDATE SET note=$4
+        """, bus, driver, naryad_date, note)
+
+    await interaction.response.send_message(f"Добавена е забележка за {bus} / {driver}.")
+
+
 # ---------------- NARYAD ----------------
 
 @tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
@@ -599,12 +671,20 @@ async def generate_naryad_text(return_data=False):
     line_limits = get_line_limits_for_date(tomorrow)
 
     async with pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM ext_info WHERE naryad_date < $1",
+            tomorrow.date()
+        )
         buses = await conn.fetch("SELECT * FROM buses")
         reserves = await conn.fetch("SELECT bus FROM reserves")
         broken = await conn.fetch("SELECT bus FROM broken")
         sick = await conn.fetch("SELECT driver FROM sick")
         assigned_reserves = await conn.fetch(
             "SELECT broken_bus, reserve_bus FROM assigned_reserves"
+        )
+        ext_infos = await conn.fetch(
+            "SELECT bus, driver, note FROM ext_info WHERE naryad_date=$1",
+            tomorrow.date()
         )
 
     if not buses:
@@ -618,6 +698,7 @@ async def generate_naryad_text(return_data=False):
     sick_set = {r["driver"] for r in sick}
     rest_set = get_rest_drivers_for_date(tomorrow.date(), buses, sick_set)
     assigned_map = {r["broken_bus"]: r["reserve_bus"] for r in assigned_reserves}
+    ext_info_map = {(r["bus"], r["driver"]): r["note"] for r in ext_infos}
 
     reserve_list = [r["bus"] for r in reserves]
 
@@ -694,8 +775,21 @@ async def generate_naryad_text(return_data=False):
             if second:
                 f2 = format_driver_status(second, sick_set, rest_set)
 
+            note_parts = []
+
+            for note_driver in (first, second):
+                if note_driver is None:
+                    continue
+
+                note = ext_info_map.get((original_bus, note_driver))
+
+                if note:
+                    note_parts.append(f"{note_driver}: {note}")
+
+            note_text = "; ".join(note_parts) if note_parts else "-"
+
             by_line.setdefault(line, []).append(
-                (assigned + 1, bus, f1, f2)
+                (assigned + 1, bus, f1, f2, note_text)
             )
 
             assigned += 1
@@ -703,13 +797,13 @@ async def generate_naryad_text(return_data=False):
     # ---------------- ТЕКСТ ----------------
 
     text = f"📋 НАРЯД ЗА {date_str}\n\n```"
-    text += f"{'Линия':<6} | {'Кола':<4} | {'ПС':<6} | {'Водач1':<12} | {'Водач2':<12}\n"
-    text += "-" * 75 + "\n"
+    text += f"{'Линия':<6} | {'Кола':<4} | {'ПС':<6} | {'Водач1':<12} | {'Водач2':<12} | {'Забележка':<20}\n"
+    text += "-" * 100 + "\n"
 
     for line in sorted(by_line.keys(), key=lambda x: str(x)):
-        for car, bus, f1, f2 in by_line[line]:
-            text += f"{line:<6} | {car:<4} | {bus:<6} | {f1:<12} | {f2:<12}\n"
-        text += "-" * 75 + "\n"
+        for car, bus, f1, f2, note in by_line[line]:
+            text += f"{line:<6} | {car:<4} | {bus:<6} | {f1:<12} | {f2:<12} | {note:<20}\n"
+        text += "-" * 100 + "\n"
 
     text += "```"
 
