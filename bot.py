@@ -342,34 +342,72 @@ def generate_trip_sheet(line, car, bus, driver1, driver2):
 def load_naryad_font(size, bold=False):
     from PIL import ImageFont
 
-    font_names = (
-        ("arialbd.ttf", "arial.ttf"),
-        ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"),
-    )
+    font_names = [
+        "arialbd.ttf",
+        "DejaVuSans-Bold.ttf",
+        "NotoSans-Bold.ttf",
+        "LiberationSans-Bold.ttf",
+    ]
+
+    if not bold:
+        font_names.extend([
+            "arial.ttf",
+            "DejaVuSans.ttf",
+            "NotoSans-Regular.ttf",
+            "LiberationSans-Regular.ttf",
+        ])
+
     font_dirs = (
         os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts"),
         "/usr/share/fonts/truetype/dejavu",
+        "/usr/share/fonts/truetype/noto",
+        "/usr/share/fonts/truetype/liberation",
+        "/usr/share/fonts/truetype/liberation2",
         "/usr/share/fonts/dejavu",
+        "/usr/share/fonts",
     )
 
-    index = 0 if bold else 1
-
     for font_dir in font_dirs:
-        for names in font_names:
-            path = os.path.join(font_dir, names[index])
+        for font_name in font_names:
+            path = os.path.join(font_dir, font_name)
             if os.path.exists(path):
                 return ImageFont.truetype(path, size)
+
+    for font_dir in font_dirs:
+        if not os.path.exists(font_dir):
+            continue
+
+        for root, _, files in os.walk(font_dir):
+            for filename in files:
+                lower = filename.lower()
+
+                if lower.endswith((".ttf", ".otf")) and ("bold" in lower or bold):
+                    return ImageFont.truetype(os.path.join(root, filename), size)
 
     return ImageFont.load_default()
 
 
+def clean_display_text(value):
+    text = str(value)
+
+    if "Ð" not in text and "Ñ" not in text:
+        return text
+
+    try:
+        fixed = text.encode("latin1").decode("utf-8")
+    except UnicodeError:
+        return text
+
+    return fixed
+
+
 def text_size(draw, text, font):
-    bbox = draw.textbbox((0, 0), str(text), font=font)
+    bbox = draw.textbbox((0, 0), clean_display_text(text), font=font)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 
 def wrap_text(draw, text, font, max_width):
-    words = str(text).split()
+    words = clean_display_text(text).split()
     if not words:
         return [""]
 
@@ -409,28 +447,35 @@ def paste_logo(canvas, logo_name, box):
 def render_naryad_png(text, by_line):
     from PIL import Image, ImageDraw
 
-    width = 1600
-    margin = 58
-    header_h = 150
-    title_h = 78
-    meta_h = 52
-    table_top = margin + header_h + title_h + meta_h + 20
+    font_scale = 3.5
+    layout_scale = 3.5
+    logo_scale = 2.5
 
-    font_title = load_naryad_font(48, bold=True)
-    font_header = load_naryad_font(24, bold=True)
-    font_cell = load_naryad_font(23)
-    font_small = load_naryad_font(21)
+    def sc(value, scale=layout_scale):
+        return int(round(value * scale))
 
-    probe = Image.new("RGBA", (width, 200), "white")
+    width = sc(1600)
+    margin = sc(58)
+    header_h = sc(150)
+    title_h = sc(78)
+    meta_h = sc(52)
+    table_top = margin + header_h + title_h + meta_h + sc(20)
+
+    font_title = load_naryad_font(sc(48, font_scale), bold=True)
+    font_header = load_naryad_font(sc(24, font_scale), bold=True)
+    font_cell = load_naryad_font(sc(23, font_scale), bold=True)
+    font_small = load_naryad_font(sc(21, font_scale), bold=True)
+
+    probe = Image.new("RGBA", (width, sc(200)), "white")
     draw = ImageDraw.Draw(probe)
 
     columns = [
-        ("\u041b\u0438\u043d\u0438\u044f", 130),
-        ("\u041a\u043e\u043b\u0430", 110),
-        ("\u041f\u0421", 130),
-        ("\u0412\u043e\u0434\u0430\u0447 1", 235),
-        ("\u0412\u043e\u0434\u0430\u0447 2", 235),
-        ("\u0417\u0430\u0431\u0435\u043b\u0435\u0436\u043a\u0430", 570),
+        ("\u041b\u0438\u043d\u0438\u044f", sc(130)),
+        ("\u041a\u043e\u043b\u0430", sc(110)),
+        ("\u041f\u0421", sc(130)),
+        ("\u0412\u043e\u0434\u0430\u0447 1", sc(235)),
+        ("\u0412\u043e\u0434\u0430\u0447 2", sc(235)),
+        ("\u0417\u0430\u0431\u0435\u043b\u0435\u0436\u043a\u0430", sc(570)),
     ]
 
     rows = []
@@ -445,33 +490,39 @@ def render_naryad_png(text, by_line):
         max_lines = 1
 
         for value, (_, col_width) in zip(row, columns):
-            cell_lines = wrap_text(draw, value, font_cell, col_width - 22)
+            cell_lines = wrap_text(draw, value, font_cell, col_width - sc(22))
             max_lines = max(max_lines, len(cell_lines))
 
-        row_heights.append(max(46, 20 + max_lines * 28))
+        row_heights.append(max(sc(46), sc(20) + max_lines * sc(28)))
 
-    table_h = 54 + sum(row_heights)
+    table_h = sc(54) + sum(row_heights)
     footer_text = text.split("```")[-1].strip() if "```" in text else ""
     footer_lines = []
 
     for footer_line in footer_text.splitlines():
-        footer_lines.extend(wrap_text(draw, footer_line, font_small, width - margin * 2 - 30))
+        footer_lines.extend(wrap_text(draw, footer_line, font_small, width - margin * 2 - sc(30)))
 
-    footer_h = 36 + max(1, len(footer_lines)) * 30
-    height = max(980, table_top + table_h + footer_h + margin)
+    footer_h = sc(36) + max(1, len(footer_lines)) * sc(30)
+    height = max(sc(980), table_top + table_h + footer_h + margin)
 
     canvas = Image.new("RGBA", (width, height), "white")
     draw = ImageDraw.Draw(canvas)
 
-    draw.rectangle((margin, margin, width - margin, height - margin), outline="#1f1f1f", width=3)
+    line_w = sc(3)
+    draw.rectangle((margin, margin, width - margin, height - margin), outline="#1f1f1f", width=line_w)
 
-    paste_logo(canvas, "leftlogo.png", (margin + 28, margin + 18, margin + 280, margin + 126))
-    paste_logo(canvas, "rightlogo.png", (width - margin - 130, margin + 18, width - margin - 32, margin + 126))
-    draw.line((margin, margin + header_h, width - margin, margin + header_h), fill="#1f1f1f", width=3)
+    left_logo_w = sc(252, logo_scale)
+    logo_h = sc(108, logo_scale)
+    right_logo_w = sc(98, logo_scale)
+    logo_y = margin + sc(18)
+
+    paste_logo(canvas, "leftlogo.png", (margin + sc(28), logo_y, margin + sc(28) + left_logo_w, logo_y + logo_h))
+    paste_logo(canvas, "rightlogo.png", (width - margin - sc(32) - right_logo_w, logo_y, width - margin - sc(32), logo_y + logo_h))
+    draw.line((margin, margin + header_h, width - margin, margin + header_h), fill="#1f1f1f", width=line_w)
 
     title = "\u041d\u0410\u0420\u042f\u0414"
     title_w = text_size(draw, title, font_title)[0]
-    draw.text(((width - title_w) / 2, margin + header_h + 18), title, fill="#111111", font=font_title)
+    draw.text(((width - title_w) / 2, margin + header_h + sc(18)), title, fill="#111111", font=font_title)
 
     tomorrow = datetime.now() + timedelta(days=1)
     meta_items = [
@@ -480,45 +531,45 @@ def render_naryad_png(text, by_line):
         "\u0418\u0437\u0433\u043e\u0442\u0432\u0438\u043b:",
     ]
     meta_y = margin + header_h + title_h
-    meta_w = (width - margin * 2 - 40) // 3
+    meta_w = (width - margin * 2 - sc(40)) // 3
 
     for idx, item in enumerate(meta_items):
-        x = margin + 20 + idx * (meta_w + 20)
-        draw.rectangle((x, meta_y, x + meta_w, meta_y + 46), outline="#333333", width=2)
-        draw.text((x + 12, meta_y + 12), item, fill="#111111", font=font_small)
+        x = margin + sc(20) + idx * (meta_w + sc(20))
+        draw.rectangle((x, meta_y, x + meta_w, meta_y + sc(46)), outline="#333333", width=sc(2))
+        draw.text((x + sc(12), meta_y + sc(12)), item, fill="#111111", font=font_small)
 
-    table_x = margin + 20
+    table_x = margin + sc(20)
     table_y = table_top
     x = table_x
 
     for label, col_width in columns:
-        draw.rectangle((x, table_y, x + col_width, table_y + 54), fill="#ededed", outline="#333333", width=2)
+        draw.rectangle((x, table_y, x + col_width, table_y + sc(54)), fill="#ededed", outline="#333333", width=sc(2))
         label_w = text_size(draw, label, font_header)[0]
-        draw.text((x + (col_width - label_w) / 2, table_y + 14), label, fill="#111111", font=font_header)
+        draw.text((x + (col_width - label_w) / 2, table_y + sc(14)), label, fill="#111111", font=font_header)
         x += col_width
 
-    y = table_y + 54
+    y = table_y + sc(54)
 
     for row, row_h in zip(rows, row_heights):
         x = table_x
 
         for value, (_, col_width) in zip(row, columns):
-            draw.rectangle((x, y, x + col_width, y + row_h), outline="#333333", width=2)
-            lines = wrap_text(draw, value, font_cell, col_width - 22)
+            draw.rectangle((x, y, x + col_width, y + row_h), outline="#333333", width=sc(2))
+            lines = wrap_text(draw, value, font_cell, col_width - sc(22))
 
             for line_index, cell_line in enumerate(lines):
-                draw.text((x + 11, y + 10 + line_index * 28), cell_line, fill="#111111", font=font_cell)
+                draw.text((x + sc(11), y + sc(10) + line_index * sc(28)), cell_line, fill="#111111", font=font_cell)
 
             x += col_width
 
         y += row_h
 
     if footer_lines:
-        y += 24
-        draw.rectangle((table_x, y, width - margin - 20, y + footer_h - 18), outline="#333333", width=2)
+        y += sc(24)
+        draw.rectangle((table_x, y, width - margin - sc(20), y + footer_h - sc(18)), outline="#333333", width=sc(2))
 
         for index, line in enumerate(footer_lines):
-            draw.text((table_x + 14, y + 14 + index * 30), line, fill="#111111", font=font_small)
+            draw.text((table_x + sc(14), y + sc(14) + index * sc(30)), line, fill="#111111", font=font_small)
 
     output = io.BytesIO()
     canvas.convert("RGB").save(output, format="PNG", optimize=True)
