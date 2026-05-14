@@ -390,7 +390,7 @@ def load_naryad_font(size, bold=False):
 def clean_display_text(value):
     text = str(value)
 
-    if "Ð" not in text and "Ñ" not in text:
+    if "Ð" not in text and "Ñ" not in text and "Ã" not in text:
         return text
 
     try:
@@ -399,6 +399,20 @@ def clean_display_text(value):
         return text
 
     return fixed
+
+
+def draw_centered_text(draw, box, text, font, fill="#111111"):
+    x1, y1, x2, y2 = box
+    text = clean_display_text(text)
+    text_w, text_h = text_size(draw, text, font)
+    draw.text((x1 + (x2 - x1 - text_w) / 2, y1 + (y2 - y1 - text_h) / 2), text, fill=fill, font=font)
+
+
+def draw_label_box(draw, box, label, value, font, line_width, fill="#ffffff"):
+    x1, y1, x2, y2 = box
+    text = f"{label}: {clean_display_text(value)}" if label else clean_display_text(value)
+    draw.rounded_rectangle(box, radius=max(8, line_width * 3), fill=fill, outline="#2f3a4a", width=line_width)
+    draw.text((x1 + line_width * 5, y1 + line_width * 4), text, fill="#111111", font=font)
 
 
 def text_size(draw, text, font):
@@ -505,11 +519,14 @@ def render_naryad_png(text, by_line):
     footer_h = sc(36) + max(1, len(footer_lines)) * sc(30)
     height = max(sc(980), table_top + table_h + footer_h + margin)
 
-    canvas = Image.new("RGBA", (width, height), "white")
+    canvas = Image.new("RGBA", (width, height), "#f6f8fb")
     draw = ImageDraw.Draw(canvas)
 
     line_w = sc(3)
-    draw.rectangle((margin, margin, width - margin, height - margin), outline="#1f1f1f", width=line_w)
+    draw.rounded_rectangle((margin, margin, width - margin, height - margin), radius=sc(18), fill="#ffffff", outline="#1f2937", width=line_w)
+    draw.rounded_rectangle((margin + line_w, margin + line_w, width - margin - line_w, margin + header_h), radius=sc(14), fill="#e8f1ff", outline=None)
+    draw.rectangle((margin + line_w, margin + header_h - sc(16), width - margin - line_w, margin + header_h), fill="#e8f1ff")
+    draw.rectangle((margin, margin + header_h - sc(8), width - margin, margin + header_h), fill="#2563eb")
 
     left_logo_w = sc(252, logo_scale)
     logo_h = sc(108, logo_scale)
@@ -518,11 +535,18 @@ def render_naryad_png(text, by_line):
 
     paste_logo(canvas, "leftlogo.png", (margin + sc(28), logo_y, margin + sc(28) + left_logo_w, logo_y + logo_h))
     paste_logo(canvas, "rightlogo.png", (width - margin - sc(32) - right_logo_w, logo_y, width - margin - sc(32), logo_y + logo_h))
-    draw.line((margin, margin + header_h, width - margin, margin + header_h), fill="#1f1f1f", width=line_w)
 
     title = "\u041d\u0410\u0420\u042f\u0414"
     title_w = text_size(draw, title, font_title)[0]
-    draw.text(((width - title_w) / 2, margin + header_h + sc(18)), title, fill="#111111", font=font_title)
+    title_y = margin + header_h + sc(18)
+    draw.rounded_rectangle(
+        ((width - title_w) / 2 - sc(36), title_y - sc(8), (width + title_w) / 2 + sc(36), title_y + sc(62)),
+        radius=sc(18),
+        fill="#eef6ff",
+        outline="#bfd7ff",
+        width=sc(2)
+    )
+    draw.text(((width - title_w) / 2, title_y), title, fill="#0f172a", font=font_title)
 
     tomorrow = datetime.now() + timedelta(days=1)
     meta_items = [
@@ -535,26 +559,25 @@ def render_naryad_png(text, by_line):
 
     for idx, item in enumerate(meta_items):
         x = margin + sc(20) + idx * (meta_w + sc(20))
-        draw.rectangle((x, meta_y, x + meta_w, meta_y + sc(46)), outline="#333333", width=sc(2))
-        draw.text((x + sc(12), meta_y + sc(12)), item, fill="#111111", font=font_small)
+        draw_label_box(draw, (x, meta_y, x + meta_w, meta_y + sc(46)), "", item, font_small, sc(2), fill="#f8fbff")
 
     table_x = margin + sc(20)
     table_y = table_top
     x = table_x
 
     for label, col_width in columns:
-        draw.rectangle((x, table_y, x + col_width, table_y + sc(54)), fill="#ededed", outline="#333333", width=sc(2))
-        label_w = text_size(draw, label, font_header)[0]
-        draw.text((x + (col_width - label_w) / 2, table_y + sc(14)), label, fill="#111111", font=font_header)
+        draw.rectangle((x, table_y, x + col_width, table_y + sc(54)), fill="#1d4ed8", outline="#1e3a8a", width=sc(2))
+        draw_centered_text(draw, (x, table_y, x + col_width, table_y + sc(54)), label, font_header, fill="#ffffff")
         x += col_width
 
     y = table_y + sc(54)
 
-    for row, row_h in zip(rows, row_heights):
+    for row_index, (row, row_h) in enumerate(zip(rows, row_heights)):
         x = table_x
+        row_fill = "#ffffff" if row_index % 2 == 0 else "#f4f8ff"
 
         for value, (_, col_width) in zip(row, columns):
-            draw.rectangle((x, y, x + col_width, y + row_h), outline="#333333", width=sc(2))
+            draw.rectangle((x, y, x + col_width, y + row_h), fill=row_fill, outline="#334155", width=sc(2))
             lines = wrap_text(draw, value, font_cell, col_width - sc(22))
 
             for line_index, cell_line in enumerate(lines):
@@ -566,10 +589,10 @@ def render_naryad_png(text, by_line):
 
     if footer_lines:
         y += sc(24)
-        draw.rectangle((table_x, y, width - margin - sc(20), y + footer_h - sc(18)), outline="#333333", width=sc(2))
+        draw.rounded_rectangle((table_x, y, width - margin - sc(20), y + footer_h - sc(18)), radius=sc(14), fill="#fff7ed", outline="#9a3412", width=sc(2))
 
         for index, line in enumerate(footer_lines):
-            draw.text((table_x + sc(14), y + sc(14) + index * sc(30)), line, fill="#111111", font=font_small)
+            draw.text((table_x + sc(14), y + sc(14) + index * sc(30)), clean_display_text(line), fill="#111111", font=font_small)
 
     output = io.BytesIO()
     canvas.convert("RGB").save(output, format="PNG", optimize=True)
@@ -584,6 +607,170 @@ def make_naryad_png_file(text, by_line):
     return discord.File(image, filename=filename)
 
 
+def build_trip_sheet_rows(line, car):
+    start, end = LINES_INFO.get(line, ("???", "???"))
+
+    shifts_1 = [
+        ("04:30", "12:30"),
+        ("04:45", "12:45"),
+        ("05:00", "13:00"),
+        ("05:15", "13:15")
+    ]
+
+    shifts_2 = [
+        ("12:45", "21:30"),
+        ("13:00", "21:45"),
+        ("13:15", "22:00"),
+        ("13:30", "22:15")
+    ]
+
+    idx = (car - 1) % 4
+
+    def build_rows(start_time, end_time):
+        t = datetime.strptime(start_time, "%H:%M")
+        end_dt = datetime.strptime(end_time, "%H:%M")
+        rows = []
+
+        while t < end_dt:
+            dep = t
+            arr = t + timedelta(minutes=30)
+            rows.append((dep.strftime("%H:%M"), arr.strftime("%H:%M")))
+            t += timedelta(minutes=60)
+
+        return rows
+
+    return (
+        clean_display_text(start),
+        clean_display_text(end),
+        ("1-\u0432\u0430 \u0441\u043c\u044f\u043d\u0430", build_rows(*shifts_1[idx])),
+        ("2-\u0440\u0430 \u0441\u043c\u044f\u043d\u0430", build_rows(*shifts_2[idx])),
+    )
+
+
+def render_trip_sheet_png(line, car, bus, driver1, driver2):
+    from PIL import Image, ImageDraw
+
+    font_scale = 2.8
+    layout_scale = 2.8
+    logo_scale = 2.5
+
+    def sc(value, scale=layout_scale):
+        return int(round(value * scale))
+
+    start, end, first_shift, second_shift = build_trip_sheet_rows(line, car)
+    shifts = [first_shift, second_shift]
+
+    width = sc(1150)
+    margin = sc(42)
+    header_h = sc(126)
+    title_h = sc(74)
+    info_h = sc(120)
+    shift_title_h = sc(46)
+    table_header_h = sc(42)
+    row_h = sc(42)
+    gap = sc(28)
+
+    font_title = load_naryad_font(sc(38, font_scale), bold=True)
+    font_header = load_naryad_font(sc(20, font_scale), bold=True)
+    font_cell = load_naryad_font(sc(18, font_scale), bold=True)
+    font_small = load_naryad_font(sc(17, font_scale), bold=True)
+
+    max_rows = sum(len(rows) for _, rows in shifts)
+    height = margin * 2 + header_h + title_h + info_h + gap * 3
+    height += len(shifts) * (shift_title_h + table_header_h) + max_rows * row_h
+
+    canvas = Image.new("RGBA", (width, height), "#f6f8fb")
+    draw = ImageDraw.Draw(canvas)
+
+    line_w = sc(2)
+    draw.rounded_rectangle((margin, margin, width - margin, height - margin), radius=sc(14), fill="#ffffff", outline="#1f2937", width=line_w)
+    draw.rounded_rectangle((margin + line_w, margin + line_w, width - margin - line_w, margin + header_h), radius=sc(12), fill="#e8f1ff", outline=None)
+    draw.rectangle((margin + line_w, margin + header_h - sc(14), width - margin - line_w, margin + header_h), fill="#e8f1ff")
+    draw.rectangle((margin, margin + header_h - sc(7), width - margin, margin + header_h), fill="#2563eb")
+
+    logo_y = margin + sc(14)
+    left_logo_w = sc(205, logo_scale)
+    logo_h = sc(86, logo_scale)
+    right_logo_w = sc(78, logo_scale)
+    paste_logo(canvas, "leftlogo.png", (margin + sc(22), logo_y, margin + sc(22) + left_logo_w, logo_y + logo_h))
+    paste_logo(canvas, "rightlogo.png", (width - margin - sc(24) - right_logo_w, logo_y, width - margin - sc(24), logo_y + logo_h))
+
+    title = "\u041f\u042a\u0422\u0415\u041d \u041b\u0418\u0421\u0422"
+    title_y = margin + header_h + sc(18)
+    title_w = text_size(draw, title, font_title)[0]
+    draw.rounded_rectangle(
+        ((width - title_w) / 2 - sc(28), title_y - sc(8), (width + title_w) / 2 + sc(28), title_y + sc(52)),
+        radius=sc(14),
+        fill="#eef6ff",
+        outline="#bfd7ff",
+        width=line_w
+    )
+    draw.text(((width - title_w) / 2, title_y), title, fill="#0f172a", font=font_title)
+
+    info_y = margin + header_h + title_h
+    box_gap = sc(14)
+    box_w = (width - margin * 2 - sc(40) - box_gap) // 2
+    left_x = margin + sc(20)
+    right_x = left_x + box_w + box_gap
+    box_h = sc(46)
+
+    draw_label_box(draw, (left_x, info_y, left_x + box_w, info_y + box_h), "\u041b\u0438\u043d\u0438\u044f", line, font_small, line_w, fill="#f8fbff")
+    draw_label_box(draw, (right_x, info_y, right_x + box_w, info_y + box_h), "\u041f\u0421", bus, font_small, line_w, fill="#f8fbff")
+    draw_label_box(draw, (left_x, info_y + box_h + sc(10), left_x + box_w, info_y + box_h * 2 + sc(10)), "\u041a\u043e\u043b\u0430", car, font_small, line_w, fill="#f8fbff")
+    draw_label_box(draw, (right_x, info_y + box_h + sc(10), right_x + box_w, info_y + box_h * 2 + sc(10)), "\u0414\u0430\u0442\u0430", (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y"), font_small, line_w, fill="#f8fbff")
+
+    drivers_y = info_y + box_h * 2 + sc(24)
+    draw_label_box(draw, (left_x, drivers_y, left_x + box_w, drivers_y + box_h), "\u0412\u043e\u0434\u0430\u0447 1", driver1, font_small, line_w, fill="#fff7ed")
+    draw_label_box(draw, (right_x, drivers_y, right_x + box_w, drivers_y + box_h), "\u0412\u043e\u0434\u0430\u0447 2", driver2, font_small, line_w, fill="#fff7ed")
+
+    table_x = margin + sc(20)
+    table_w = width - margin * 2 - sc(40)
+    col_widths = [sc(420), sc(170), table_w - sc(420) - sc(170)]
+    y = margin + header_h + title_h + info_h + gap
+
+    for shift_name, rows in shifts:
+        draw.rounded_rectangle((table_x, y, table_x + table_w, y + shift_title_h), radius=sc(10), fill="#1d4ed8", outline="#1e3a8a", width=line_w)
+        draw_centered_text(draw, (table_x, y, table_x + table_w, y + shift_title_h), shift_name, font_header, fill="#ffffff")
+        y += shift_title_h
+
+        headers = [start, "\u0427\u0410\u0421", end]
+        x = table_x
+
+        for header, col_w in zip(headers, col_widths):
+            draw.rectangle((x, y, x + col_w, y + table_header_h), fill="#dbeafe", outline="#334155", width=line_w)
+            draw_centered_text(draw, (x, y, x + col_w, y + table_header_h), header, font_header, fill="#0f172a")
+            x += col_w
+
+        y += table_header_h
+
+        for row_index, (dep, arr) in enumerate(rows):
+            x = table_x
+            row_fill = "#ffffff" if row_index % 2 == 0 else "#f4f8ff"
+            values = [start, dep, f"{end} {arr}"]
+
+            for value, col_w in zip(values, col_widths):
+                draw.rectangle((x, y, x + col_w, y + row_h), fill=row_fill, outline="#334155", width=line_w)
+                draw.text((x + sc(10), y + sc(9)), clean_display_text(value), fill="#111111", font=font_cell)
+                x += col_w
+
+            y += row_h
+
+        y += gap
+
+    output = io.BytesIO()
+    canvas.convert("RGB").save(output, format="PNG", optimize=True)
+    output.seek(0)
+    return output
+
+
+def make_trip_sheet_png_file(line, car, bus, driver1, driver2):
+    image = render_trip_sheet_png(line, car, bus, driver1, driver2)
+    tomorrow = datetime.now() + timedelta(days=1)
+    safe_line = str(line).replace("/", "-")
+    filename = f"puten-list-{tomorrow.strftime('%Y-%m-%d')}-{safe_line}-{car}-{bus}.png"
+    return discord.File(image, filename=filename)
+
+
 # ---------------- SEND TRIP SHEETS ----------------
 
 async def send_trip_sheets(by_line):
@@ -593,8 +780,13 @@ async def send_trip_sheets(by_line):
 
     for line in by_line:
         for car, bus, f1, f2, *_ in by_line[line]:
-            sheet = generate_trip_sheet(line, car, bus, f1, f2)
-            await channel.send(f"```{sheet}```")
+            try:
+                file = make_trip_sheet_png_file(line, car, bus, f1, f2)
+                await channel.send(file=file)
+            except Exception as exc:
+                print("TRIP_SHEET_PNG_ERROR:", repr(exc))
+                sheet = generate_trip_sheet(line, car, bus, f1, f2)
+                await channel.send(f"```{sheet}```")
 
 
 # ---------------- READY ----------------
