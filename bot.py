@@ -773,20 +773,22 @@ def make_trip_sheet_png_file(line, car, bus, driver1, driver2):
 
 # ---------------- SEND TRIP SHEETS ----------------
 
-async def send_trip_sheets(by_line):
-    channel = bot.get_channel(PTEN_CHANNEL_ID)
+async def send_trip_sheets(by_line, fallback_channel=None):
+    channel = bot.get_channel(PTEN_CHANNEL_ID) or fallback_channel
     if not channel:
         return
 
     for line in by_line:
         for car, bus, f1, f2, *_ in by_line[line]:
+            message = f"Пътен лист - линия {line}, кола {car}, ПС {bus}"
+
             try:
                 file = make_trip_sheet_png_file(line, car, bus, f1, f2)
-                await channel.send(file=file)
+                await channel.send(message, file=file)
             except Exception as exc:
                 print("TRIP_SHEET_PNG_ERROR:", repr(exc))
                 sheet = generate_trip_sheet(line, car, bus, f1, f2)
-                await channel.send(f"```{sheet}```")
+                await channel.send(f"{message}\n```{sheet}```")
 
 
 # ---------------- READY ----------------
@@ -1056,7 +1058,7 @@ async def naryad(interaction: discord.Interaction):
     try:
         file = make_naryad_png_file(text, by_line)
         await interaction.response.send_message(
-            "@everyone",
+            "@everyone\nНарядът е готов. Пътните листове се пускат след него.",
             file=file,
             allowed_mentions=discord.AllowedMentions(everyone=True)
         )
@@ -1067,7 +1069,7 @@ async def naryad(interaction: discord.Interaction):
             allowed_mentions=discord.AllowedMentions(everyone=True)
         )
 
-    await send_trip_sheets(by_line)
+    await send_trip_sheets(by_line, interaction.channel)
 
 
 # ---------------- TRIPSHEETS ----------------
@@ -1079,7 +1081,7 @@ async def tripsheets(interaction: discord.Interaction):
         return
 
     _, by_line = await generate_naryad_text(return_data=True)
-    await send_trip_sheets(by_line)
+    await send_trip_sheets(by_line, interaction.channel)
     await interaction.response.send_message("Пътните листове са пуснати.")
 
 
@@ -1094,11 +1096,14 @@ async def roadinfo(interaction: discord.Interaction):
     text, by_line = await generate_naryad_text(return_data=True)
     try:
         file = make_naryad_png_file(text, by_line)
-        await interaction.response.send_message(file=file)
+        await interaction.response.send_message(
+            "Нарядът е готов. Пътните листове се пускат след него.",
+            file=file
+        )
     except Exception as exc:
         print("ROADINFO_NARYAD_PNG_ERROR:", repr(exc))
         await interaction.response.send_message(text)
-    await send_trip_sheets(by_line)
+    await send_trip_sheets(by_line, interaction.channel)
 
 
 # ---------------- AUTO ----------------
@@ -1114,7 +1119,7 @@ async def auto_naryad():
             try:
                 file = make_naryad_png_file(text, by_line)
                 await channel.send(
-                    "@everyone",
+                    "@everyone\nНарядът е готов. Пътните листове се пускат след него.",
                     file=file,
                     allowed_mentions=discord.AllowedMentions(everyone=True)
                 )
@@ -1125,7 +1130,7 @@ async def auto_naryad():
                     allowed_mentions=discord.AllowedMentions(everyone=True)
                 )
 
-            await send_trip_sheets(by_line)
+            await send_trip_sheets(by_line, channel)
 
         await asyncio.sleep(60)
 
