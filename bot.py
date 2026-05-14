@@ -342,6 +342,10 @@ def generate_trip_sheet(line, car, bus, driver1, driver2):
 def load_naryad_font(size, bold=False):
     from PIL import ImageFont
 
+    bundled_font = os.path.join(ASSETS_DIR, "arialbd.ttf")
+    if os.path.exists(bundled_font):
+        return ImageFont.truetype(bundled_font, size)
+
     font_names = [
         "arialbd.ttf",
         "DejaVuSans-Bold.ttf",
@@ -475,10 +479,10 @@ def render_naryad_png(text, by_line):
     meta_h = sc(72)
     table_top = margin + header_h + title_h + meta_h + sc(24)
 
-    font_title = load_naryad_font(sc(76, font_scale), bold=True)
-    font_header = load_naryad_font(sc(34, font_scale), bold=True)
-    font_cell = load_naryad_font(sc(31, font_scale), bold=True)
-    font_small = load_naryad_font(sc(29, font_scale), bold=True)
+    font_title = load_naryad_font(sc(88, font_scale), bold=True)
+    font_header = load_naryad_font(sc(44, font_scale), bold=True)
+    font_cell = load_naryad_font(sc(42, font_scale), bold=True)
+    font_small = load_naryad_font(sc(38, font_scale), bold=True)
 
     probe = Image.new("RGBA", (width, sc(200)), "white")
     draw = ImageDraw.Draw(probe)
@@ -507,16 +511,16 @@ def render_naryad_png(text, by_line):
             cell_lines = wrap_text(draw, value, font_cell, col_width - sc(22))
             max_lines = max(max_lines, len(cell_lines))
 
-        row_heights.append(max(sc(64), sc(18) + max_lines * sc(38)))
+        row_heights.append(max(sc(88), sc(18) + max_lines * sc(54)))
 
-    table_h = sc(72) + sum(row_heights)
+    table_h = sc(94) + sum(row_heights)
     footer_text = text.split("```")[-1].strip() if "```" in text else ""
     footer_lines = []
 
     for footer_line in footer_text.splitlines():
         footer_lines.extend(wrap_text(draw, footer_line, font_small, width - margin * 2 - sc(30)))
 
-    footer_h = sc(40) + max(1, len(footer_lines)) * sc(38)
+    footer_h = sc(46) + max(1, len(footer_lines)) * sc(50)
     height = max(sc(980), table_top + table_h + footer_h + margin)
 
     canvas = Image.new("RGBA", (width, height), "#f6f8fb")
@@ -528,9 +532,9 @@ def render_naryad_png(text, by_line):
     draw.rectangle((margin + line_w, margin + header_h - sc(16), width - margin - line_w, margin + header_h), fill="#e8f1ff")
     draw.rectangle((margin, margin + header_h - sc(8), width - margin, margin + header_h), fill="#2563eb")
 
-    left_logo_w = sc(420, logo_scale)
-    logo_h = sc(120, logo_scale)
-    right_logo_w = sc(145, logo_scale)
+    left_logo_w = sc(560, logo_scale)
+    logo_h = sc(140, logo_scale)
+    right_logo_w = sc(175, logo_scale)
     logo_y = margin + sc(18)
 
     paste_logo(canvas, "leftlogo.png", (margin + sc(28), logo_y, margin + sc(28) + left_logo_w, logo_y + logo_h))
@@ -540,7 +544,7 @@ def render_naryad_png(text, by_line):
     title_w = text_size(draw, title, font_title)[0]
     title_y = margin + header_h + sc(18)
     draw.rounded_rectangle(
-        ((width - title_w) / 2 - sc(36), title_y - sc(10), (width + title_w) / 2 + sc(36), title_y + sc(92)),
+        ((width - title_w) / 2 - sc(36), title_y - sc(10), (width + title_w) / 2 + sc(36), title_y + sc(110)),
         radius=sc(18),
         fill="#eef6ff",
         outline="#bfd7ff",
@@ -559,18 +563,18 @@ def render_naryad_png(text, by_line):
 
     for idx, item in enumerate(meta_items):
         x = margin + sc(20) + idx * (meta_w + sc(20))
-        draw_label_box(draw, (x, meta_y, x + meta_w, meta_y + sc(58)), "", item, font_small, sc(2), fill="#f8fbff")
+        draw_label_box(draw, (x, meta_y, x + meta_w, meta_y + sc(70)), "", item, font_small, sc(2), fill="#f8fbff")
 
     table_x = margin + sc(20)
     table_y = table_top
     x = table_x
 
     for label, col_width in columns:
-        draw.rectangle((x, table_y, x + col_width, table_y + sc(72)), fill="#1d4ed8", outline="#1e3a8a", width=sc(2))
-        draw_centered_text(draw, (x, table_y, x + col_width, table_y + sc(72)), label, font_header, fill="#ffffff")
+        draw.rectangle((x, table_y, x + col_width, table_y + sc(94)), fill="#1d4ed8", outline="#1e3a8a", width=sc(2))
+        draw_centered_text(draw, (x, table_y, x + col_width, table_y + sc(94)), label, font_header, fill="#ffffff")
         x += col_width
 
-    y = table_y + sc(72)
+    y = table_y + sc(94)
 
     for row_index, (row, row_h) in enumerate(zip(rows, row_heights)):
         x = table_x
@@ -581,7 +585,7 @@ def render_naryad_png(text, by_line):
             lines = wrap_text(draw, value, font_cell, col_width - sc(22))
 
             for line_index, cell_line in enumerate(lines):
-                draw.text((x + sc(12), y + sc(13) + line_index * sc(38)), cell_line, fill="#111111", font=font_cell)
+                draw.text((x + sc(12), y + sc(18) + line_index * sc(54)), cell_line, fill="#111111", font=font_cell)
 
             x += col_width
 
@@ -592,7 +596,7 @@ def render_naryad_png(text, by_line):
         draw.rounded_rectangle((table_x, y, width - margin - sc(20), y + footer_h - sc(18)), radius=sc(14), fill="#fff7ed", outline="#9a3412", width=sc(2))
 
         for index, line in enumerate(footer_lines):
-            draw.text((table_x + sc(14), y + sc(14) + index * sc(38)), clean_display_text(line), fill="#111111", font=font_small)
+            draw.text((table_x + sc(14), y + sc(14) + index * sc(50)), clean_display_text(line), fill="#111111", font=font_small)
 
     output = io.BytesIO()
     canvas.convert("RGB").save(output, format="PNG", optimize=True)
@@ -664,16 +668,16 @@ def render_trip_sheet_png(line, car, bus, driver1, driver2):
     margin = sc(42)
     header_h = sc(150)
     title_h = sc(100)
-    info_h = sc(170)
-    shift_title_h = sc(64)
-    table_header_h = sc(58)
-    row_h = sc(58)
+    info_h = sc(280)
+    shift_title_h = sc(82)
+    table_header_h = sc(76)
+    row_h = sc(78)
     gap = sc(24)
 
-    font_title = load_naryad_font(sc(62, font_scale), bold=True)
-    font_header = load_naryad_font(sc(30, font_scale), bold=True)
-    font_cell = load_naryad_font(sc(28, font_scale), bold=True)
-    font_small = load_naryad_font(sc(27, font_scale), bold=True)
+    font_title = load_naryad_font(sc(76, font_scale), bold=True)
+    font_header = load_naryad_font(sc(42, font_scale), bold=True)
+    font_cell = load_naryad_font(sc(40, font_scale), bold=True)
+    font_small = load_naryad_font(sc(38, font_scale), bold=True)
 
     max_rows = sum(len(rows) for _, rows in shifts)
     height = margin * 2 + header_h + title_h + info_h + gap * 3
@@ -689,9 +693,9 @@ def render_trip_sheet_png(line, car, bus, driver1, driver2):
     draw.rectangle((margin, margin + header_h - sc(7), width - margin, margin + header_h), fill="#2563eb")
 
     logo_y = margin + sc(14)
-    left_logo_w = sc(340, logo_scale)
-    logo_h = sc(110, logo_scale)
-    right_logo_w = sc(130, logo_scale)
+    left_logo_w = sc(470, logo_scale)
+    logo_h = sc(135, logo_scale)
+    right_logo_w = sc(165, logo_scale)
     paste_logo(canvas, "leftlogo.png", (margin + sc(22), logo_y, margin + sc(22) + left_logo_w, logo_y + logo_h))
     paste_logo(canvas, "rightlogo.png", (width - margin - sc(24) - right_logo_w, logo_y, width - margin - sc(24), logo_y + logo_h))
 
@@ -699,7 +703,7 @@ def render_trip_sheet_png(line, car, bus, driver1, driver2):
     title_y = margin + header_h + sc(18)
     title_w = text_size(draw, title, font_title)[0]
     draw.rounded_rectangle(
-        ((width - title_w) / 2 - sc(28), title_y - sc(8), (width + title_w) / 2 + sc(28), title_y + sc(78)),
+        ((width - title_w) / 2 - sc(28), title_y - sc(8), (width + title_w) / 2 + sc(28), title_y + sc(100)),
         radius=sc(14),
         fill="#eef6ff",
         outline="#bfd7ff",
@@ -712,7 +716,7 @@ def render_trip_sheet_png(line, car, bus, driver1, driver2):
     box_w = (width - margin * 2 - sc(40) - box_gap) // 2
     left_x = margin + sc(20)
     right_x = left_x + box_w + box_gap
-    box_h = sc(60)
+    box_h = sc(76)
 
     draw_label_box(draw, (left_x, info_y, left_x + box_w, info_y + box_h), "\u041b\u0438\u043d\u0438\u044f", line, font_small, line_w, fill="#f8fbff")
     draw_label_box(draw, (right_x, info_y, right_x + box_w, info_y + box_h), "\u041f\u0421", bus, font_small, line_w, fill="#f8fbff")
@@ -750,7 +754,7 @@ def render_trip_sheet_png(line, car, bus, driver1, driver2):
 
             for value, col_w in zip(values, col_widths):
                 draw.rectangle((x, y, x + col_w, y + row_h), fill=row_fill, outline="#334155", width=line_w)
-                draw.text((x + sc(12), y + sc(12)), clean_display_text(value), fill="#111111", font=font_cell)
+                draw.text((x + sc(12), y + sc(16)), clean_display_text(value), fill="#111111", font=font_cell)
                 x += col_w
 
             y += row_h
