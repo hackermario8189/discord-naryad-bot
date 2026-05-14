@@ -1,4 +1,5 @@
 import os
+import io
 import discord
 import asyncpg
 import random
@@ -16,6 +17,9 @@ OWNER_ID = 985188925360443452
 GUILD_ID = 1456265813190512763
 CHANNEL_ID = 1473183167895830568
 REST_ROTATION_START = datetime(2026, 1, 1).date()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+ASSETS_DIR = os.path.join(TEMPLATES_DIR, "assets")
 PTEN_CHANNEL_ID = 1484651462721015838  # СМЕНИ С ТВОЯ КАНАЛ
 
 pool = None
@@ -335,6 +339,200 @@ def generate_trip_sheet(line, car, bus, driver1, driver2):
 
     return text
 
+def load_naryad_font(size, bold=False):
+    from PIL import ImageFont
+
+    font_names = (
+        ("arialbd.ttf", "arial.ttf"),
+        ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"),
+    )
+    font_dirs = (
+        os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts"),
+        "/usr/share/fonts/truetype/dejavu",
+        "/usr/share/fonts/dejavu",
+    )
+
+    index = 0 if bold else 1
+
+    for font_dir in font_dirs:
+        for names in font_names:
+            path = os.path.join(font_dir, names[index])
+            if os.path.exists(path):
+                return ImageFont.truetype(path, size)
+
+    return ImageFont.load_default()
+
+
+def text_size(draw, text, font):
+    bbox = draw.textbbox((0, 0), str(text), font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def wrap_text(draw, text, font, max_width):
+    words = str(text).split()
+    if not words:
+        return [""]
+
+    lines = []
+    line = words[0]
+
+    for word in words[1:]:
+        candidate = f"{line} {word}"
+        if text_size(draw, candidate, font)[0] <= max_width:
+            line = candidate
+        else:
+            lines.append(line)
+            line = word
+
+    lines.append(line)
+    return lines
+
+
+def paste_logo(canvas, logo_name, box):
+    from PIL import Image
+
+    path = os.path.join(ASSETS_DIR, logo_name)
+
+    if not os.path.exists(path):
+        return
+
+    logo = Image.open(path).convert("RGBA")
+    max_w = box[2] - box[0]
+    max_h = box[3] - box[1]
+    logo.thumbnail((max_w, max_h), Image.LANCZOS)
+
+    x = box[0] + (max_w - logo.width) // 2
+    y = box[1] + (max_h - logo.height) // 2
+    canvas.alpha_composite(logo, (x, y))
+
+
+def render_naryad_png(text, by_line):
+    from PIL import Image, ImageDraw
+
+    width = 1600
+    margin = 58
+    header_h = 150
+    title_h = 78
+    meta_h = 52
+    table_top = margin + header_h + title_h + meta_h + 20
+
+    font_title = load_naryad_font(48, bold=True)
+    font_header = load_naryad_font(24, bold=True)
+    font_cell = load_naryad_font(23)
+    font_small = load_naryad_font(21)
+
+    probe = Image.new("RGBA", (width, 200), "white")
+    draw = ImageDraw.Draw(probe)
+
+    columns = [
+        ("\u041b\u0438\u043d\u0438\u044f", 130),
+        ("\u041a\u043e\u043b\u0430", 110),
+        ("\u041f\u0421", 130),
+        ("\u0412\u043e\u0434\u0430\u0447 1", 235),
+        ("\u0412\u043e\u0434\u0430\u0447 2", 235),
+        ("\u0417\u0430\u0431\u0435\u043b\u0435\u0436\u043a\u0430", 570),
+    ]
+
+    rows = []
+
+    for line in sorted(by_line.keys(), key=lambda x: str(x)):
+        for car, bus, f1, f2, note in by_line[line]:
+            rows.append([line, car, bus, f1, f2, note])
+
+    row_heights = []
+
+    for row in rows:
+        max_lines = 1
+
+        for value, (_, col_width) in zip(row, columns):
+            cell_lines = wrap_text(draw, value, font_cell, col_width - 22)
+            max_lines = max(max_lines, len(cell_lines))
+
+        row_heights.append(max(46, 20 + max_lines * 28))
+
+    table_h = 54 + sum(row_heights)
+    footer_text = text.split("```")[-1].strip() if "```" in text else ""
+    footer_lines = []
+
+    for footer_line in footer_text.splitlines():
+        footer_lines.extend(wrap_text(draw, footer_line, font_small, width - margin * 2 - 30))
+
+    footer_h = 36 + max(1, len(footer_lines)) * 30
+    height = max(980, table_top + table_h + footer_h + margin)
+
+    canvas = Image.new("RGBA", (width, height), "white")
+    draw = ImageDraw.Draw(canvas)
+
+    draw.rectangle((margin, margin, width - margin, height - margin), outline="#1f1f1f", width=3)
+
+    paste_logo(canvas, "leftlogo.png", (margin + 28, margin + 18, margin + 280, margin + 126))
+    paste_logo(canvas, "rightlogo.png", (width - margin - 130, margin + 18, width - margin - 32, margin + 126))
+    draw.line((margin, margin + header_h, width - margin, margin + header_h), fill="#1f1f1f", width=3)
+
+    title = "\u041d\u0410\u0420\u042f\u0414"
+    title_w = text_size(draw, title, font_title)[0]
+    draw.text(((width - title_w) / 2, margin + header_h + 18), title, fill="#111111", font=font_title)
+
+    tomorrow = datetime.now() + timedelta(days=1)
+    meta_items = [
+        f"\u0414\u0430\u0442\u0430: {tomorrow.strftime('%d.%m.%Y')}",
+        "\u0421\u043c\u044f\u043d\u0430:",
+        "\u0418\u0437\u0433\u043e\u0442\u0432\u0438\u043b:",
+    ]
+    meta_y = margin + header_h + title_h
+    meta_w = (width - margin * 2 - 40) // 3
+
+    for idx, item in enumerate(meta_items):
+        x = margin + 20 + idx * (meta_w + 20)
+        draw.rectangle((x, meta_y, x + meta_w, meta_y + 46), outline="#333333", width=2)
+        draw.text((x + 12, meta_y + 12), item, fill="#111111", font=font_small)
+
+    table_x = margin + 20
+    table_y = table_top
+    x = table_x
+
+    for label, col_width in columns:
+        draw.rectangle((x, table_y, x + col_width, table_y + 54), fill="#ededed", outline="#333333", width=2)
+        label_w = text_size(draw, label, font_header)[0]
+        draw.text((x + (col_width - label_w) / 2, table_y + 14), label, fill="#111111", font=font_header)
+        x += col_width
+
+    y = table_y + 54
+
+    for row, row_h in zip(rows, row_heights):
+        x = table_x
+
+        for value, (_, col_width) in zip(row, columns):
+            draw.rectangle((x, y, x + col_width, y + row_h), outline="#333333", width=2)
+            lines = wrap_text(draw, value, font_cell, col_width - 22)
+
+            for line_index, cell_line in enumerate(lines):
+                draw.text((x + 11, y + 10 + line_index * 28), cell_line, fill="#111111", font=font_cell)
+
+            x += col_width
+
+        y += row_h
+
+    if footer_lines:
+        y += 24
+        draw.rectangle((table_x, y, width - margin - 20, y + footer_h - 18), outline="#333333", width=2)
+
+        for index, line in enumerate(footer_lines):
+            draw.text((table_x + 14, y + 14 + index * 30), line, fill="#111111", font=font_small)
+
+    output = io.BytesIO()
+    canvas.convert("RGB").save(output, format="PNG", optimize=True)
+    output.seek(0)
+    return output
+
+
+def make_naryad_png_file(text, by_line):
+    image = render_naryad_png(text, by_line)
+    tomorrow = datetime.now() + timedelta(days=1)
+    filename = f"naryad-{tomorrow.strftime('%Y-%m-%d')}.png"
+    return discord.File(image, filename=filename)
+
+
 # ---------------- SEND TRIP SHEETS ----------------
 
 async def send_trip_sheets(by_line):
@@ -610,11 +808,23 @@ async def extinfo(interaction: discord.Interaction, bus: int, driver: int, note:
 
 @tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
 async def naryad(interaction: discord.Interaction):
-    text = await generate_naryad_text()
-    await interaction.response.send_message(
-        "@everyone\n" + text,
-        allowed_mentions=discord.AllowedMentions(everyone=True)
-    )
+    text, by_line = await generate_naryad_text(return_data=True)
+
+    try:
+        file = make_naryad_png_file(text, by_line)
+        await interaction.response.send_message(
+            "@everyone",
+            file=file,
+            allowed_mentions=discord.AllowedMentions(everyone=True)
+        )
+    except Exception as exc:
+        print("NARYAD_PNG_ERROR:", repr(exc))
+        await interaction.response.send_message(
+            "@everyone\n" + text,
+            allowed_mentions=discord.AllowedMentions(everyone=True)
+        )
+
+    await send_trip_sheets(by_line)
 
 
 # ---------------- TRIPSHEETS ----------------
@@ -639,7 +849,12 @@ async def roadinfo(interaction: discord.Interaction):
         return
 
     text, by_line = await generate_naryad_text(return_data=True)
-    await interaction.response.send_message(text)
+    try:
+        file = make_naryad_png_file(text, by_line)
+        await interaction.response.send_message(file=file)
+    except Exception as exc:
+        print("ROADINFO_NARYAD_PNG_ERROR:", repr(exc))
+        await interaction.response.send_message(text)
     await send_trip_sheets(by_line)
 
 
@@ -651,11 +866,24 @@ async def auto_naryad():
     if now.hour == 15 and now.minute == 0:
         channel = bot.get_channel(CHANNEL_ID)
         if channel:
-            text = await generate_naryad_text()
-            await channel.send(
-                "@everyone\n" + text,
-                allowed_mentions=discord.AllowedMentions(everyone=True)
-            )
+            text, by_line = await generate_naryad_text(return_data=True)
+
+            try:
+                file = make_naryad_png_file(text, by_line)
+                await channel.send(
+                    "@everyone",
+                    file=file,
+                    allowed_mentions=discord.AllowedMentions(everyone=True)
+                )
+            except Exception as exc:
+                print("AUTO_NARYAD_PNG_ERROR:", repr(exc))
+                await channel.send(
+                    "@everyone\n" + text,
+                    allowed_mentions=discord.AllowedMentions(everyone=True)
+                )
+
+            await send_trip_sheets(by_line)
+
         await asyncio.sleep(60)
 
 
