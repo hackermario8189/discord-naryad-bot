@@ -1058,6 +1058,10 @@ async def extinfo(interaction: discord.Interaction, bus: int, driver: int, note:
 @tree.command(name="naryad", description="Наряд", guild=discord.Object(id=GUILD_ID))
 async def naryad(interaction: discord.Interaction):
     text, by_line = await generate_naryad_text(return_data=True)
+    
+    if interaction.user.id != OWNER_ID:
+        await interaction.response.send_message("Нямаш право.", ephemeral=True)
+        return
 
     try:
         file = make_naryad_png_file(text, by_line)
