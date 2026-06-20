@@ -1219,11 +1219,13 @@ async def generate_naryad_text(return_data=False):
     # --- групиране на автобуси ---
     buses_1xxx = [b for b in buses if 1000 <= b["bus"] <= 1999]
     buses_2xxx = [b for b in buses if 2000 <= b["bus"] <= 2999]
+    buses_7xxx = [b for b in buses if 7000 <= b["bus"] <= 7999]
 
     random.shuffle(buses_1xxx)
     random.shuffle(buses_2xxx)
+    random.shuffle(buses_7xxx)
 
-    buses = buses_1xxx + buses_2xxx
+    buses = buses_1xxx + buses_2xxx + buses_7xxx
 
     by_line = {}
     available_lines = list(line_limits.keys())
